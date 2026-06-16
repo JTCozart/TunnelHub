@@ -9,8 +9,15 @@ obj/
 *.db-shm
 *.db-wal
 
+# Data Protection keyring (encrypts secrets at rest — per-deployment, never commit)
+keys/
+
 # Published client binaries (regenerate with deploy/publish-clients.ps1)
-src/TunnelHub.Server/wwwroot/downloads/
+src/Ztpr.Server/wwwroot/downloads/
+
+# Local release bundle (regenerate with deploy/build-release.ps1)
+out/
+ztpr-linux-x64.tar.gz
 
 # Publish output
 **/bin/pub/

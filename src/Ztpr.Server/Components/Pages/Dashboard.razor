@@ -1,0 +1,83 @@
+@page "/dashboard"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@implements IDisposable
+@inject TunnelRegistry Registry
+@inject SettingsService SettingsSvc
+
+<PageTitle>Dashboard · Ztpr</PageTitle>
+
+<h1>Your tunnels</h1>
+<p>Live tunnels registered to your API keys. Subdomains release automatically when idle or after @Hours hours.</p>
+
+@if (_mine.Count == 0)
+{
+    <p class="text-muted">No active tunnels. Start your client to open one.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr><th>URL</th><th>Client</th><th>Started</th><th>Idle</th><th>Expires in</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var t in _mine)
+            {
+                <tr>
+                    <td><a href="@Url(t)" target="_blank">@t.Subdomain.@Base</a></td>
+                    <td>@(t.ClientLabel ?? t.ClientIp ?? "—")</td>
+                    <td>@t.StartedAt.LocalDateTime.ToString("T")</td>
+                    <td><span class="badge text-bg-light border">@Ago(t.LastSeen)</span></td>
+                    <td><span class="badge text-bg-secondary">@Remaining(t.ExpiresAt)</span></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    private List<TunnelSession> _mine = [];
+    private string _userId = "";
+    private System.Threading.Timer? _ticker;
+    private string Base => SettingsSvc.Current.BaseDomain;
+    private int Hours => SettingsSvc.Current.MaxTunnelHours;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState;
+        _userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        Registry.Changed += OnChanged;
+        Refresh();
+        _ticker = new System.Threading.Timer(_ => InvokeAsync(StateHasChanged), null, 1000, 1000);
+    }
+
+    private void OnChanged() => InvokeAsync(() => { Refresh(); StateHasChanged(); });
+
+    private void Refresh() => _mine = Registry.ForOwner(_userId)
+        .OrderBy(t => t.Subdomain).ToList();
+
+    private string Url(TunnelSession t) => $"https://{t.Subdomain}.{Base}";
+
+    private static string Ago(DateTimeOffset t)
+    {
+        var s = (DateTimeOffset.UtcNow - t).TotalSeconds;
+        return s < 60 ? $"{(int)s}s" : $"{(int)(s / 60)}m";
+    }
+
+    private static string Remaining(DateTimeOffset expires)
+    {
+        if (expires == DateTimeOffset.MaxValue) return "never";
+        var span = expires - DateTimeOffset.UtcNow;
+        if (span <= TimeSpan.Zero) return "expiring…";
+        if (span.TotalDays >= 1) return $"{(int)span.TotalDays}d {span.Hours}h";
+        return span.Hours > 0 ? $"{span.Hours}h {span.Minutes}m" : $"{span.Minutes}m";
+    }
+
+    public void Dispose()
+    {
+        Registry.Changed -= OnChanged;
+        _ticker?.Dispose();
+    }
+}

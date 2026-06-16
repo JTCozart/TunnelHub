@@ -1,17 +1,17 @@
-# Publishes the TunnelHub client as self-contained single-file binaries for
+# Publishes the Ztpr client as self-contained single-file binaries for
 # Windows and Linux, placing them where the server's Downloads page serves them.
 #
 #   pwsh deploy/publish-clients.ps1
 #
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$client = Join-Path $root "src/TunnelHub.Client"
-$outDir = Join-Path $root "src/TunnelHub.Server/wwwroot/downloads"
+$client = Join-Path $root "src/Ztpr.Client"
+$outDir = Join-Path $root "src/Ztpr.Server/wwwroot/downloads"
 New-Item -ItemType Directory -Force $outDir | Out-Null
 
 $targets = @(
-    @{ Rid = "win-x64";   Out = "tunnelhub-win-x64.exe"; Built = "TunnelHub.Client.exe" },
-    @{ Rid = "linux-x64"; Out = "tunnelhub-linux-x64";   Built = "TunnelHub.Client" }
+    @{ Rid = "win-x64";   Out = "ztpr-win-x64.exe"; Built = "Ztpr.Client.exe" },
+    @{ Rid = "linux-x64"; Out = "ztpr-linux-x64";   Built = "Ztpr.Client" }
 )
 
 foreach ($t in $targets) {

@@ -1,0 +1,33 @@
+@page "/"
+@inject SettingsService SettingsSvc
+
+<PageTitle>Ztpr</PageTitle>
+
+<h1>Ztpr</h1>
+<p class="lead">Self-hosted, short-lived reverse-proxy tunnels with friendly two-word subdomains.</p>
+
+<AuthorizeView>
+    <Authorized>
+        <p>You're signed in. Head to your <a href="/dashboard">dashboard</a> to see active tunnels,
+           or manage your <a href="/keys">API keys</a>.</p>
+    </Authorized>
+    <NotAuthorized>
+        <p><a class="btn btn-primary" href="/login">Sign in</a>
+           <a class="btn btn-outline-secondary" href="/register">Register</a></p>
+    </NotAuthorized>
+</AuthorizeView>
+
+<hr />
+<h2>How it works</h2>
+<ol>
+    <li>Create an <strong>API key</strong> in the web UI.</li>
+    <li>Download the <a href="/downloads">client</a> for your platform.</li>
+    <li>Run <code>ztpr --server @ServerUrl --key &lt;your-key&gt; --target http://localhost:3000</code>.</li>
+    <li>You get a random URL like <code>red-tiger.@Base</code>, live for up to @Hours hours.</li>
+</ol>
+
+@code {
+    private string Base => SettingsSvc.Current.BaseDomain;
+    private int Hours => SettingsSvc.Current.MaxTunnelHours;
+    private string ServerUrl => $"https://{SettingsSvc.Current.AppHost}";
+}

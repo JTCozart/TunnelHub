@@ -1,0 +1,59 @@
+@page "/register"
+@layout Layout.AuthLayout
+@inject AppDbContext Db
+@inject SettingsService SettingsSvc
+
+<PageTitle>Register · Ztpr</PageTitle>
+
+<div class="auth-card">
+    <h1>Create account</h1>
+
+    @if (_isFirstUser)
+    {
+        <div class="alert alert-info">
+            You are the first user — this account will be the <strong>administrator</strong>.
+            No invite code needed.
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <div class="alert alert-danger" role="alert">@Error</div>
+    }
+
+    <form method="post" action="/account/register">
+        <AntiforgeryToken />
+        <div class="mb-3">
+            <label class="form-label" for="email">Email</label>
+            <input class="form-control" id="email" name="email" type="email" autocomplete="username" required />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="password">Password</label>
+            <input class="form-control" id="password" name="password" type="password" autocomplete="new-password" minlength="8" required />
+        </div>
+        @if (!_isFirstUser && _requireInvite)
+        {
+            <div class="mb-3">
+                <label class="form-label" for="inviteCode">Invite code</label>
+                <input class="form-control" id="inviteCode" name="inviteCode" type="text" required />
+            </div>
+        }
+        <button class="btn btn-primary w-100" type="submit">Register</button>
+    </form>
+
+    <p class="mt-3 text-center">
+        Already have an account? <a href="/login">Sign in</a>
+    </p>
+</div>
+
+@code {
+    [SupplyParameterFromQuery] private string? Error { get; set; }
+    private bool _isFirstUser;
+    private bool _requireInvite = true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _isFirstUser = !await Db.Users.AnyAsync();
+        _requireInvite = SettingsSvc.Current.RequireInviteCode;
+    }
+}

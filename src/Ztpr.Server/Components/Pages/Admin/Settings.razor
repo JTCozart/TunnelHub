@@ -1,0 +1,705 @@
+@page "/admin/settings"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@inject SettingsService SettingsSvc
+@inject SecretProtector Secrets
+@inject WildcardCertificateService Wizard
+@inject CertificateStore Certs
+@inject IJSRuntime JS
+
+<PageTitle>Settings · Admin</PageTitle>
+
+<h1>Settings</h1>
+<p>Configure domains, DNS, and HTTPS for your deployment. Most changes apply at runtime.</p>
+
+<ul class="nav nav-tabs mb-4">
+    <li class="nav-item">
+        <button type="button" class="nav-link @(_tab == Tab.General ? "active" : "")" @onclick="() => _tab = Tab.General">General</button>
+    </li>
+    <li class="nav-item">
+        <button type="button" class="nav-link @(_tab == Tab.Limits ? "active" : "")" @onclick="() => _tab = Tab.Limits">Tunnel limits</button>
+    </li>
+    <li class="nav-item">
+        <button type="button" class="nav-link @(_tab == Tab.Dns ? "active" : "")" @onclick="() => _tab = Tab.Dns">DNS &amp; Route 53</button>
+    </li>
+    <li class="nav-item">
+        <button type="button" class="nav-link @(_tab == Tab.Certificate ? "active" : "")" @onclick="() => _tab = Tab.Certificate">HTTPS certificate</button>
+    </li>
+</ul>
+
+@if (_tab == Tab.General)
+{
+<h4>General</h4>
+<p class="text-muted">
+    Domains, HTTPS, and the registration policy are configured here at runtime —
+    there's no need to edit <code>appsettings.json</code>.
+</p>
+<div class="card mb-4" style="max-width: 620px;">
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label" for="baseDomain">Base domain</label>
+            <input class="form-control" id="baseDomain" @bind="_baseDomain" placeholder="tun.example.com" />
+            <div class="form-text">Tunnels are served as <code>&lt;sub&gt;.@(_baseDomain)</code>.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="appHost">App host</label>
+            <input class="form-control" id="appHost" @bind="_appHost" placeholder="app.example.com" />
+            <div class="form-text">The management/UI host. Requests to it are not treated as tunnel ingress.</div>
+        </div>
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="httpsEnabled" @bind="_httpsEnabled" />
+            <label class="form-check-label" for="httpsEnabled">
+                Enable HTTPS (bind ports 443/80 and serve the wildcard certificate)
+            </label>
+        </div>
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="requireInvite" @bind="_requireInvite" />
+            <label class="form-check-label" for="requireInvite">
+                Require an invite code to register (off = open self-registration)
+            </label>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_generalSaved)) { <div class="alert alert-success py-2">@_generalSaved</div> }
+
+        <button class="btn btn-primary" @onclick="SaveGeneralAsync" disabled="@_generalBusy">
+            @(_generalBusy ? "Saving…" : "Save settings")
+        </button>
+    </div>
+</div>
+}
+else if (_tab == Tab.Limits)
+{
+<h4>Tunnel limits</h4>
+<p class="text-muted">
+    Lifetime, inactivity, and concurrency limits applied to tunnels. Changes take effect
+    at runtime. <strong>Set a value to 0 to disable that limit</strong> (no cap).
+</p>
+<div class="card mb-4" style="max-width: 620px;">
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label" for="maxHours">Max session duration (hours)</label>
+            <input class="form-control" id="maxHours" type="number" min="0" @bind="_maxHours" />
+            <div class="form-text">Hard cap on how long a tunnel can stay open. <code>0</code> = no lifetime cap.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="idleMinutes">Idle timeout (minutes)</label>
+            <input class="form-control" id="idleMinutes" type="number" min="0" @bind="_idleMinutes" />
+            <div class="form-text">Release a tunnel after this long without traffic. <code>0</code> = never release on idle.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="maxPerKey">Max tunnels per API key</label>
+            <input class="form-control" id="maxPerKey" type="number" min="0" @bind="_maxPerKey" />
+            <div class="form-text">Concurrent live tunnels allowed per key. <code>0</code> = unlimited.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="reaperSeconds">Reaper interval (seconds)</label>
+            <input class="form-control" id="reaperSeconds" type="number" min="5" @bind="_reaperSeconds" />
+            <div class="form-text">How often expired/idle tunnels are swept. Minimum 5 seconds.</div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_limitsSaved)) { <div class="alert alert-success py-2">@_limitsSaved</div> }
+
+        <button class="btn btn-primary" @onclick="SaveLimitsAsync" disabled="@_limitsBusy">
+            @(_limitsBusy ? "Saving…" : "Save limits")
+        </button>
+    </div>
+</div>
+}
+else if (_tab == Tab.Dns)
+{
+<h4>Amazon Route 53 (automated DNS)</h4>
+<p class="text-muted">
+    Connect a Route 53 hosted zone and Ztpr can write the <strong>DNS-01 TXT records</strong>
+    for wildcard issuance and renewal automatically — no more editing records by hand.
+    The credentials are stored <strong>encrypted at rest</strong>.
+</p>
+
+<div class="card mb-3" style="max-width: 760px;">
+    <div class="card-body">
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="r53Enabled" @bind="_r53Enabled" />
+            <label class="form-check-label" for="r53Enabled">
+                Use Route 53 to manage DNS-01 TXT records automatically
+            </label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="r53Zone">Hosted zone ID</label>
+            <input class="form-control" id="r53Zone" @bind="_r53Zone" placeholder="Z0123456789ABCDEFGHIJ" />
+            <div class="form-text">
+                The hosted zone that owns <code>@BaseDomain</code>. Find it in the Route 53 console
+                under <em>Hosted zones → (your domain) → Hosted zone details</em>.
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="r53Region">AWS region</label>
+            <input class="form-control" id="r53Region" @bind="_r53Region" placeholder="us-east-1" />
+            <div class="form-text">
+                Route 53 is global — <code>us-east-1</code> works for standard AWS. Change only for
+                GovCloud (<code>us-gov-west-1</code>) or China (<code>cn-north-1</code>) partitions.
+            </div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="r53Key">Access key ID</label>
+            <input class="form-control" id="r53Key" @bind="_r53AccessKeyId" placeholder="AKIA…" autocomplete="off" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="r53Secret">Secret access key</label>
+            <input class="form-control" id="r53Secret" type="password" @bind="_r53SecretInput"
+                   placeholder="@(_r53SecretConfigured ? "•••••••• (leave blank to keep current)" : "Paste the secret access key")"
+                   autocomplete="off" />
+            <div class="form-text">
+                @(_r53SecretConfigured
+                    ? "A secret is stored. Leave this blank to keep it, or paste a new one to replace it."
+                    : "Stored encrypted — it is never shown again after you save.")
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_r53Saved)) { <div class="alert alert-success py-2">@_r53Saved</div> }
+        @if (!string.IsNullOrEmpty(_r53Error)) { <div class="alert alert-danger py-2">@_r53Error</div> }
+
+        <button class="btn btn-primary" @onclick="SaveRoute53Async" disabled="@_r53Busy">
+            @(_r53Busy ? "Saving…" : "Save Route 53 settings")
+        </button>
+        @if (_r53SecretConfigured)
+        {
+            <button class="btn btn-outline-danger ms-2" @onclick="ClearRoute53Async" disabled="@_r53Busy">
+                Remove credentials
+            </button>
+        }
+    </div>
+</div>
+
+<details class="mb-4" style="max-width: 760px;">
+    <summary class="text-primary" style="cursor: pointer;">
+        How to create a least-privilege AWS access key for this zone
+    </summary>
+    <div class="mt-3">
+        <p>
+            Create a dedicated IAM user whose permissions are limited to <strong>just</strong> editing
+            DNS records in your one hosted zone — nothing else in your AWS account.
+        </p>
+        <ol>
+            <li>
+                Get your <strong>hosted zone ID</strong>: Route 53 console →
+                <em>Hosted zones</em> → your domain. It looks like <code>Z0123456789ABCDEFGHIJ</code>.
+                Paste it into the field above (and into the policy below).
+            </li>
+            <li>
+                IAM console → <em>Policies → Create policy → JSON</em>. Paste the policy below,
+                <strong>replacing <code>YOUR_HOSTED_ZONE_ID</code></strong> with your zone ID, and name it
+                e.g. <code>ztpr-route53-dns01</code>.
+            </li>
+            <li>
+                IAM console → <em>Users → Create user</em> (no console access needed).
+                Attach the policy you just created.
+            </li>
+            <li>
+                Open the user → <em>Security credentials → Create access key</em> →
+                choose <em>Application running outside AWS</em>. Copy the
+                <strong>access key ID</strong> and <strong>secret access key</strong> into the fields above.
+            </li>
+        </ol>
+        <p class="mb-1"><strong>Least-privilege policy</strong> (copy &amp; paste, then swap in your zone ID):</p>
+        <div class="position-relative">
+            <button class="btn btn-sm btn-outline-secondary position-absolute top-0 end-0 m-2"
+                    @onclick="CopyPolicyAsync" type="button">
+                @(_policyCopied ? "Copied!" : "Copy")
+            </button>
+            <pre class="bg-light border rounded p-3" style="white-space: pre; overflow-x: auto;"><code>@Route53Policy</code></pre>
+        </div>
+        <p class="form-text">
+            <code>ChangeResourceRecordSets</code> is restricted to the single hosted zone;
+            <code>GetChange</code> (needed to confirm the change propagated) and the two read-only
+            <code>list</code>/<code>get</code> actions don't accept a resource scope, so they apply
+            account-wide but are harmless. The user can do nothing else.
+        </p>
+    </div>
+</details>
+}
+else if (_tab == Tab.Certificate)
+{
+<h4>HTTPS (wildcard certificate)</h4>
+<p>
+    Ztpr uses a single <strong>wildcard certificate</strong> from Let's Encrypt to
+    serve HTTPS for every tunnel subdomain. Wildcards are validated with a
+    <strong>DNS-01</strong> challenge — you add a TXT record at your DNS provider, which
+    this wizard walks you through.
+</p>
+
+@if (!_listenerOn)
+{
+    <div class="alert alert-warning">
+        The HTTPS listener is <strong>off</strong>, so port 443 isn't bound. You can still issue a
+        certificate now, but enable <strong>HTTPS</strong> on the General tab and restart the service for it to be served.
+    </div>
+}
+
+<h5>Current certificate</h5>
+@if (_current.Count == 0)
+{
+    <p class="text-muted">No certificate issued yet.</p>
+}
+else
+{
+    <ul>
+        @foreach (var c in _current)
+        {
+            <li>
+                <code>@string.Join(", ", c.Names)</code> — expires <strong>@c.NotAfter.LocalDateTime.ToString("d")</strong>
+                (@DaysLeft(c.NotAfter) days left)
+            </li>
+        }
+    </ul>
+}
+
+<hr />
+
+@if (_issuing)
+{
+    <h5>Issuing certificate…</h5>
+    <div class="progress mb-3" role="progressbar" aria-valuenow="@_progress" aria-valuemin="0" aria-valuemax="100" style="height: 1.4rem; max-width: 820px;">
+        <div class="progress-bar progress-bar-striped progress-bar-animated bg-primary" style="width: @(_progress)%;">@_progress%</div>
+    </div>
+}
+
+@if (_log.Count > 0)
+{
+    <pre class="issue-log">@string.Join("\n", _log)</pre>
+}
+
+@if (!_issuing)
+{
+@if (_step == Step.Config)
+{
+    @if (Wizard.Route53Available)
+    {
+        <div class="alert alert-info py-2" style="max-width: 820px;">
+            <i class="fa-solid fa-bolt" aria-hidden="true"></i>
+            <strong>Route 53 is connected.</strong> The DNS records will be created and verified
+            automatically — no manual steps. (Configure it on the <strong>DNS &amp; Route 53</strong> tab.)
+        </div>
+    }
+    <h5>1. Account &amp; domains</h5>
+    <div class="card" style="max-width: 620px;">
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label" for="email">Contact email</label>
+                <input class="form-control" id="email" type="email" @bind="_email" placeholder="you@example.com" />
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="tos" @bind="_tos" />
+                <label class="form-check-label" for="tos">
+                    I agree to the
+                    <a href="https://letsencrypt.org/repository/" target="_blank">Let's Encrypt Terms of Service</a>
+                </label>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="staging" @bind="_staging" />
+                <label class="form-check-label" for="staging">Use staging (recommended for a first dry run)</label>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="domains">Domains for the certificate (one per line)</label>
+                <textarea class="form-control" id="domains" rows="3" @bind="_domains"></textarea>
+                <div class="form-text">
+                    The wildcard <code>*.@BaseDomain</code> covers all tunnel subdomains. Include the bare
+                    <code>@BaseDomain</code> too. Add other names (e.g. your app host) if you want them on the same cert.
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-danger">@_error</div> }
+
+            <button class="btn btn-primary" @onclick="StartAsync" disabled="@_busy">
+                @(_busy ? "Contacting Let's Encrypt…"
+                    : Wizard.Route53Available ? "Issue certificate automatically"
+                    : "Start — get DNS records")
+            </button>
+        </div>
+    </div>
+}
+else if (_step == Step.Dns)
+{
+    <h5>2. Add these DNS records</h5>
+    <p>Create the following <strong>TXT</strong> record(s) at your DNS provider, then verify below.
+       Multiple values for the same name are normal — add them all.</p>
+
+    <table class="table" style="max-width: 820px;">
+        <thead><tr><th>Type</th><th>Name / Host</th><th>Value</th></tr></thead>
+        <tbody>
+            @foreach (var r in _records)
+            {
+                <tr>
+                    <td>@r.Type</td>
+                    <td><code>@r.Name</code></td>
+                    <td><code style="word-break:break-all;">@r.Value</code></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="alert alert-info">
+        DNS changes can take a few minutes to propagate. You can check with:
+        <code>dig TXT @(_records.FirstOrDefault()?.Name) +short</code> (or <code>nslookup -type=TXT …</code>).
+        Verifying too early just fails — wait and retry.
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-danger">@_error</div> }
+
+    <button class="btn btn-primary" @onclick="VerifyAsync" disabled="@_busy">
+        @(_busy ? "Verifying with Let's Encrypt…" : "I've added the records — Verify & issue")
+    </button>
+    <button class="btn btn-outline-secondary ms-2" @onclick="CancelWizard" disabled="@_busy">Cancel</button>
+}
+else if (_step == Step.Done)
+{
+    <div class="alert alert-success">
+        <strong>Certificate issued</strong> for <code>@string.Join(", ", _issuedDomains)</code>,
+        valid until <strong>@(_issuedExpiry?.LocalDateTime.ToString("f"))</strong>.
+        @if (!_listenerOn)
+        {
+            <text> Enable <strong>HTTPS</strong> on the General tab and restart to serve it on 443.</text>
+        }
+        else
+        {
+            <text> It is now served on 443 for all <code>*.@BaseDomain</code> hosts.</text>
+        }
+    </div>
+    <button class="btn btn-outline-primary" @onclick="Reset">Issue another / renew</button>
+}
+}
+
+<hr />
+<p class="text-muted small">
+    <strong>Renewal:</strong> Let's Encrypt certs last ~90 days. Because this uses manual DNS,
+    re-run this wizard before expiry (the TXT values change each time). Staging certs are
+    untrusted by browsers — switch staging off for the real certificate.
+</p>
+}
+
+@code {
+    private enum Tab { General, Limits, Dns, Certificate }
+    private Tab _tab = Tab.General;
+
+    private enum Step { Config, Dns, Done }
+
+    private Step _step = Step.Config;
+    private bool _busy;
+    private string? _error;
+
+    private string? _email;
+    private bool _tos;
+    private bool _staging = true;
+    private string _domains = "";
+
+    private IReadOnlyList<WildcardCertificateService.DnsRecord> _records = [];
+    private IReadOnlyList<string> _issuedDomains = [];
+    private DateTimeOffset? _issuedExpiry;
+    private IReadOnlyList<(string[] Names, DateTimeOffset NotAfter)> _current = [];
+    private bool _listenerOn;
+
+    // Automatic (Route 53) issuance progress.
+    private bool _issuing;
+    private int _progress;
+    private readonly List<string> _log = [];
+
+    // General settings (runtime).
+    private string _baseDomain = "lvh.me";
+    private string _appHost = "localhost";
+    private bool _httpsEnabled;
+    private bool _requireInvite = true;
+    private bool _generalBusy;
+    private string? _generalSaved;
+
+    // Tunnel limits (runtime). 0 disables the lifetime/idle/per-key limits.
+    private int _maxHours = 4;
+    private int _idleMinutes = 5;
+    private int _maxPerKey = 3;
+    private int _reaperSeconds = 30;
+    private bool _limitsBusy;
+    private string? _limitsSaved;
+
+    // Route 53.
+    private bool _r53Enabled;
+    private string? _r53Zone;
+    private string _r53Region = "us-east-1";
+    private string? _r53AccessKeyId;
+    private string _r53SecretInput = "";
+    private bool _r53SecretConfigured;
+    private bool _r53Busy;
+    private string? _r53Saved;
+    private string? _r53Error;
+    private bool _policyCopied;
+
+    private string BaseDomain => _baseDomain;
+
+    private string Route53Policy => Route53PolicyText.ForZone(_r53Zone);
+
+    protected override async Task OnInitializedAsync()
+    {
+        _current = Certs.Current();
+
+        var cfg = await SettingsSvc.GetAsync();
+        _baseDomain = cfg.BaseDomain;
+        _appHost = cfg.AppHost;
+        _httpsEnabled = cfg.HttpsEnabled;
+        _requireInvite = cfg.RequireInviteCode;
+        _listenerOn = cfg.HttpsEnabled;
+
+        _maxHours = cfg.MaxTunnelHours;
+        _idleMinutes = cfg.IdleTimeoutMinutes;
+        _maxPerKey = cfg.MaxTunnelsPerKey;
+        _reaperSeconds = cfg.ReaperIntervalSeconds;
+
+        _r53Enabled = cfg.Route53Enabled;
+        _r53Zone = cfg.Route53HostedZoneId;
+        _r53Region = string.IsNullOrWhiteSpace(cfg.Route53Region) ? "us-east-1" : cfg.Route53Region;
+        _r53AccessKeyId = cfg.Route53AccessKeyId;
+        _r53SecretConfigured = !string.IsNullOrEmpty(cfg.Route53SecretAccessKeyEnc);
+
+        _email = cfg.AcmeEmail;
+        _tos = cfg.AcmeAgreeTos;
+        _staging = cfg.UseStaging;
+        _domains = string.IsNullOrWhiteSpace(cfg.ManagedHostnames)
+            ? $"*.{BaseDomain}\n{BaseDomain}"
+            : cfg.ManagedHostnames!;
+
+        // If a wizard was already in progress (same circuit/session), jump to the
+        // certificate tab and resume on the DNS step.
+        if (Wizard.HasPending && Wizard.CurrentRecords is not null)
+        {
+            _records = Wizard.CurrentRecords;
+            _step = Step.Dns;
+            _tab = Tab.Certificate;
+        }
+    }
+
+    private async Task SaveGeneralAsync()
+    {
+        _generalSaved = null;
+        _generalBusy = true;
+        try
+        {
+            var httpsChanged = _httpsEnabled != SettingsSvc.Current.HttpsEnabled;
+            await SettingsSvc.UpdateAsync(s =>
+            {
+                s.BaseDomain = string.IsNullOrWhiteSpace(_baseDomain) ? "lvh.me" : _baseDomain.Trim().ToLowerInvariant();
+                s.AppHost = string.IsNullOrWhiteSpace(_appHost) ? "localhost" : _appHost.Trim().ToLowerInvariant();
+                s.HttpsEnabled = _httpsEnabled;
+                s.RequireInviteCode = _requireInvite;
+            });
+            _baseDomain = SettingsSvc.Current.BaseDomain;
+            _appHost = SettingsSvc.Current.AppHost;
+            _generalSaved = httpsChanged
+                ? "Saved. Restart the service to apply the HTTPS listener change."
+                : "Saved.";
+        }
+        finally { _generalBusy = false; }
+    }
+
+    private async Task SaveLimitsAsync()
+    {
+        _limitsSaved = null;
+        _limitsBusy = true;
+        try
+        {
+            await SettingsSvc.UpdateAsync(s =>
+            {
+                s.MaxTunnelHours = Math.Max(0, _maxHours);
+                s.IdleTimeoutMinutes = Math.Max(0, _idleMinutes);
+                s.MaxTunnelsPerKey = Math.Max(0, _maxPerKey);
+                s.ReaperIntervalSeconds = Math.Max(5, _reaperSeconds);
+            });
+            _maxHours = SettingsSvc.Current.MaxTunnelHours;
+            _idleMinutes = SettingsSvc.Current.IdleTimeoutMinutes;
+            _maxPerKey = SettingsSvc.Current.MaxTunnelsPerKey;
+            _reaperSeconds = SettingsSvc.Current.ReaperIntervalSeconds;
+            _limitsSaved = "Saved.";
+        }
+        finally { _limitsBusy = false; }
+    }
+
+    private async Task SaveRoute53Async()
+    {
+        _r53Saved = null;
+        _r53Error = null;
+
+        var zone = _r53Zone?.Trim();
+        var keyId = _r53AccessKeyId?.Trim();
+        var newSecret = _r53SecretInput;
+
+        if (_r53Enabled)
+        {
+            if (string.IsNullOrWhiteSpace(zone) || string.IsNullOrWhiteSpace(keyId)
+                || (!_r53SecretConfigured && string.IsNullOrWhiteSpace(newSecret)))
+            {
+                _r53Error = "Enter the hosted zone ID, access key ID, and secret access key to enable Route 53.";
+                return;
+            }
+        }
+
+        _r53Busy = true;
+        try
+        {
+            await SettingsSvc.UpdateAsync(s =>
+            {
+                s.Route53Enabled = _r53Enabled;
+                s.Route53HostedZoneId = string.IsNullOrWhiteSpace(zone) ? null : zone;
+                s.Route53Region = string.IsNullOrWhiteSpace(_r53Region) ? "us-east-1" : _r53Region.Trim();
+                s.Route53AccessKeyId = string.IsNullOrWhiteSpace(keyId) ? null : keyId;
+                // Only replace the stored secret when a new value was entered.
+                if (!string.IsNullOrWhiteSpace(newSecret))
+                    s.Route53SecretAccessKeyEnc = Secrets.Protect(newSecret.Trim());
+            });
+
+            _r53SecretInput = "";
+            _r53SecretConfigured = !string.IsNullOrEmpty(SettingsSvc.Current.Route53SecretAccessKeyEnc);
+            _r53Saved = "Saved.";
+        }
+        finally { _r53Busy = false; }
+    }
+
+    private async Task ClearRoute53Async()
+    {
+        _r53Busy = true;
+        _r53Saved = null;
+        _r53Error = null;
+        try
+        {
+            await SettingsSvc.UpdateAsync(s =>
+            {
+                s.Route53Enabled = false;
+                s.Route53AccessKeyId = null;
+                s.Route53SecretAccessKeyEnc = null;
+            });
+            _r53Enabled = false;
+            _r53AccessKeyId = null;
+            _r53SecretInput = "";
+            _r53SecretConfigured = false;
+            _r53Saved = "Credentials removed.";
+        }
+        finally { _r53Busy = false; }
+    }
+
+    private async Task CopyPolicyAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", Route53Policy);
+            _policyCopied = true;
+        }
+        catch { /* clipboard unavailable — the user can still select the text */ }
+    }
+
+    private string[] ParseDomains() =>
+        _domains.Split(['\n', '\r', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(d => d.ToLowerInvariant()).Distinct().ToArray();
+
+    private async Task StartAsync()
+    {
+        _error = null;
+        if (string.IsNullOrWhiteSpace(_email) || !_tos)
+        {
+            _error = "Enter a contact email and agree to the Terms of Service.";
+            return;
+        }
+        var domains = ParseDomains();
+        if (domains.Length == 0)
+        {
+            _error = "Enter at least one domain.";
+            return;
+        }
+
+        await SettingsSvc.UpdateAsync(s =>
+        {
+            s.AcmeEmail = _email!.Trim();
+            s.AcmeAgreeTos = _tos;
+            s.UseStaging = _staging;
+            s.ManagedHostnames = _domains.Trim();
+        });
+
+        // Route 53 connected → fully automatic: publish records, wait, verify, issue,
+        // streaming progress to the bar + log. Otherwise fall back to the manual wizard.
+        if (Wizard.Route53Available)
+        {
+            _log.Clear();
+            _progress = 0;
+            _issuing = true;
+            try
+            {
+                var report = new Progress<WildcardCertificateService.Progress>(p => InvokeAsync(() =>
+                {
+                    _progress = p.Percent;
+                    _log.Add($"[{DateTime.Now:HH:mm:ss}] {p.Message}");
+                    StateHasChanged();
+                }));
+
+                var result = await Wizard.IssueAutomaticAsync(domains, report);
+                if (result.Ok)
+                {
+                    _issuedDomains = result.Domains;
+                    _issuedExpiry = result.NotAfter;
+                    _current = Certs.Current();
+                    _step = Step.Done;
+                }
+                else
+                {
+                    _error = result.Error;
+                    _step = Step.Config;
+                }
+            }
+            finally { _issuing = false; }
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var result = await Wizard.BeginAsync(domains);
+            if (!result.Ok)
+            {
+                _error = result.Error;
+                return;
+            }
+            _records = result.Records;
+            _step = Step.Dns;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task VerifyAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var result = await Wizard.CompleteAsync();
+            if (!result.Ok)
+            {
+                _error = result.Error;
+                return;
+            }
+            _issuedDomains = result.Domains;
+            _issuedExpiry = result.NotAfter;
+            _current = Certs.Current();
+            _step = Step.Done;
+        }
+        finally { _busy = false; }
+    }
+
+    private void CancelWizard()
+    {
+        Wizard.Cancel();
+        _step = Step.Config;
+        _error = null;
+    }
+
+    private void Reset()
+    {
+        _step = Step.Config;
+        _error = null;
+        _log.Clear();
+        _progress = 0;
+    }
+
+    private static int DaysLeft(DateTimeOffset notAfter) =>
+        Math.Max(0, (int)(notAfter - DateTimeOffset.UtcNow).TotalDays);
+}

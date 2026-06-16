@@ -1,0 +1,25 @@
+[Unit]
+Description=Ztpr server (reverse-proxy tunnels)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/ztpr
+# Self-contained publish — no system-wide .NET runtime required.
+ExecStart=/opt/ztpr/Ztpr.Server
+Restart=always
+RestartSec=5
+User=ztpr
+Group=ztpr
+Environment=ASPNETCORE_ENVIRONMENT=Production
+# Bind HTTP on 80 by default. When TLS is enabled the app configures 80+443 in
+# code, which overrides this value.
+Environment=ASPNETCORE_URLS=http://0.0.0.0:80
+# Binding to ports < 1024 as a non-root user requires this capability:
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+# The SQLite DB and ACME state live here:
+ReadWritePaths=/opt/ztpr
+SyslogIdentifier=ztpr
+
+[Install]
+WantedBy=multi-user.target

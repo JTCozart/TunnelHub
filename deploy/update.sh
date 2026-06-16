@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# TunnelHub updater — checks GitHub for the latest release and installs it,
+# Ztpr updater — checks GitHub for the latest release and installs it,
 # preserving your appsettings, database, and certificates.
 #
 # Usage:
@@ -9,13 +9,13 @@
 #   sudo ./update.sh --force    # reinstall the latest even if versions match
 #
 # Configure the source repo (defaults to the value baked in at release time):
-#   TUNNELHUB_REPO=owner/repo sudo ./update.sh
+#   ZTPR_REPO=owner/repo sudo ./update.sh
 #
 set -euo pipefail
 
-INSTALL_DIR=/opt/tunnelhub
-ASSET=tunnelhub-linux-x64.tar.gz
-REPO="${TUNNELHUB_REPO:-OWNER/REPO}"
+INSTALL_DIR=/opt/ztpr
+ASSET=ztpr-linux-x64.tar.gz
+REPO="${ZTPR_REPO:-OWNER/REPO}"
 
 log() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 err() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -30,7 +30,7 @@ esac
 
 command -v curl >/dev/null 2>&1 || err "curl is required."
 command -v tar  >/dev/null 2>&1 || err "tar is required."
-[ "$REPO" != "OWNER/REPO" ] || err "Set TUNNELHUB_REPO=owner/repo (or bake it into the release)."
+[ "$REPO" != "OWNER/REPO" ] || err "Set ZTPR_REPO=owner/repo (or bake it into the release)."
 
 current="$(cat "$INSTALL_DIR/VERSION" 2>/dev/null || echo none)"
 log "Installed version: $current"
@@ -60,11 +60,11 @@ log "Downloading $latest…"
 curl -fsSL "https://github.com/$REPO/releases/download/$latest/$ASSET" -o "$tmp/$ASSET"
 tar -C "$tmp" -xzf "$tmp/$ASSET"
 
-[ -x "$tmp/tunnelhub/install.sh" ] || err "Downloaded bundle is missing install.sh."
+[ -x "$tmp/ztpr/install.sh" ] || err "Downloaded bundle is missing install.sh."
 
 log "Installing $latest (config, database, and certs are preserved)…"
 # install.sh stops the service, copies new files without touching appsettings*/db,
 # reinstalls the unit, and restarts.
-"$tmp/tunnelhub/install.sh"
+"$tmp/ztpr/install.sh"
 
 log "Updated to $latest."

@@ -21,39 +21,39 @@ jobs:
 
       - name: Publish server (self-contained linux-x64)
         run: |
-          dotnet publish src/TunnelHub.Server -c Release -r linux-x64 \
-            --self-contained true -o out/tunnelhub
+          dotnet publish src/Ztpr.Server -c Release -r linux-x64 \
+            --self-contained true -o out/ztpr
 
       - name: Publish clients
         run: |
-          dotnet publish src/TunnelHub.Client -c Release -r linux-x64 \
+          dotnet publish src/Ztpr.Client -c Release -r linux-x64 \
             --self-contained true -p:PublishSingleFile=true -o out/client-linux
-          dotnet publish src/TunnelHub.Client -c Release -r win-x64 \
+          dotnet publish src/Ztpr.Client -c Release -r win-x64 \
             --self-contained true -p:PublishSingleFile=true -o out/client-win
-          mkdir -p out/tunnelhub/wwwroot/downloads
-          cp out/client-linux/TunnelHub.Client out/tunnelhub/wwwroot/downloads/tunnelhub-linux-x64
-          cp out/client-win/TunnelHub.Client.exe out/tunnelhub/wwwroot/downloads/tunnelhub-win-x64.exe
+          mkdir -p out/ztpr/wwwroot/downloads
+          cp out/client-linux/Ztpr.Client out/ztpr/wwwroot/downloads/ztpr-linux-x64
+          cp out/client-win/Ztpr.Client.exe out/ztpr/wwwroot/downloads/ztpr-win-x64.exe
 
       - name: Bundle installer
         run: |
-          cp deploy/install.sh out/tunnelhub/install.sh
-          cp deploy/update.sh out/tunnelhub/update.sh
-          cp deploy/tunnelhub.service out/tunnelhub/tunnelhub.service
+          cp deploy/install.sh out/ztpr/install.sh
+          cp deploy/update.sh out/ztpr/update.sh
+          cp deploy/ztpr.service out/ztpr/ztpr.service
           # Bake the repo + version into the bundle so update.sh can self-check.
-          sed -i "s|OWNER/REPO|${{ github.repository }}|g" out/tunnelhub/update.sh
-          echo "${{ github.ref_name }}" > out/tunnelhub/VERSION
-          chmod +x out/tunnelhub/install.sh out/tunnelhub/update.sh out/tunnelhub/TunnelHub.Server
+          sed -i "s|OWNER/REPO|${{ github.repository }}|g" out/ztpr/update.sh
+          echo "${{ github.ref_name }}" > out/ztpr/VERSION
+          chmod +x out/ztpr/install.sh out/ztpr/update.sh out/ztpr/Ztpr.Server
           # The bundle already contains the Windows/Linux client downloads under
           # wwwroot/downloads (added in the previous step).
-          tar -C out -czf tunnelhub-linux-x64.tar.gz tunnelhub
+          tar -C out -czf ztpr-linux-x64.tar.gz ztpr
 
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "${{ github.ref_name }}" \
-            tunnelhub-linux-x64.tar.gz \
-            out/tunnelhub/wwwroot/downloads/tunnelhub-win-x64.exe \
-            out/tunnelhub/wwwroot/downloads/tunnelhub-linux-x64 \
+            ztpr-linux-x64.tar.gz \
+            out/ztpr/wwwroot/downloads/ztpr-win-x64.exe \
+            out/ztpr/wwwroot/downloads/ztpr-linux-x64 \
             --title "${{ github.ref_name }}" \
             --generate-notes

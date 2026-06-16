@@ -1,0 +1,116 @@
+@page "/keys"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>API keys · Ztpr</PageTitle>
+
+<h1>API keys</h1>
+<p>Hand a key to your tunnel client with <code>--key</code>. The full key is shown only once.</p>
+
+@if (_justCreated is not null)
+{
+    <div class="alert alert-success">
+        <strong>New key created.</strong> Copy it now — it won't be shown again:
+        <pre class="mb-0 mt-2">@_justCreated</pre>
+    </div>
+}
+
+<div class="card mb-4" style="max-width: 480px;">
+    <div class="card-body">
+        <h5 class="card-title">Create a key</h5>
+        <div class="input-group">
+            <input class="form-control" placeholder="Label (e.g. laptop)" @bind="_newLabel" />
+            <button class="btn btn-primary" @onclick="CreateAsync" disabled="@_busy">Create</button>
+        </div>
+    </div>
+</div>
+
+@if (_keys.Count == 0)
+{
+    <p class="text-muted">No keys yet.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr><th>Label</th><th>Key</th><th>Created</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var k in _keys)
+            {
+                <tr>
+                    <td>@k.Label</td>
+                    <td><code>@k.DisplayPrefix</code></td>
+                    <td>@k.CreatedAt.LocalDateTime.ToString("g")</td>
+                    <td>
+                        @if (k.IsActive)
+                        {
+                            <span class="badge bg-success">active</span>
+                        }
+                        else
+                        {
+                            <span class="badge bg-secondary">revoked</span>
+                        }
+                    </td>
+                    <td>
+                        @if (k.IsActive)
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => RevokeAsync(k.Id)">Revoke</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    private List<ApiKey> _keys = [];
+    private string _newLabel = "";
+    private string? _justCreated;
+    private string _userId = "";
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState;
+        _userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // SQLite can't ORDER BY DateTimeOffset, so order in memory.
+        var keys = await db.ApiKeys.Where(k => k.OwnerId == _userId).ToListAsync();
+        _keys = keys.OrderByDescending(k => k.CreatedAt).ToList();
+    }
+
+    private async Task CreateAsync()
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetRequiredService<ApiKeyService>();
+            var created = await svc.CreateAsync(_userId, _newLabel);
+            _justCreated = created.RawKey;
+            _newLabel = "";
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task RevokeAsync(Guid id)
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var svc = scope.ServiceProvider.GetRequiredService<ApiKeyService>();
+        await svc.RevokeAsync(id, _userId);
+        await LoadAsync();
+    }
+}

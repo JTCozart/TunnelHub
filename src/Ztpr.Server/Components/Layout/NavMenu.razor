@@ -1,0 +1,65 @@
+<div class="top-row navbar">
+    <div class="container-fluid">
+        <a class="navbar-brand" href="/">
+            <span class="zt-badge">ZT</span> Ztpr
+        </a>
+    </div>
+</div>
+
+<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+    <nav class="nav flex-column">
+        <div class="nav-item px-3">
+            <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">
+                <i class="fa-solid fa-house" aria-hidden="true"></i> Home
+            </NavLink>
+        </div>
+
+        <AuthorizeView>
+            <Authorized>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/dashboard">
+                        <i class="fa-solid fa-list" aria-hidden="true"></i> Dashboard
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/keys">
+                        <i class="fa-solid fa-key" aria-hidden="true"></i> API keys
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/downloads">
+                        <i class="fa-solid fa-download" aria-hidden="true"></i> Downloads
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Admin">
+            <Authorized>
+                <div class="nav-sec">Admin</div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/admin/tunnels">
+                        <i class="fa-solid fa-diagram-project" aria-hidden="true"></i> Active tunnels
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/admin/users">
+                        <i class="fa-solid fa-users" aria-hidden="true"></i> Users
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/admin/invites">
+                        <i class="fa-solid fa-ticket" aria-hidden="true"></i> Invite codes
+                    </NavLink>
+                </div>
+                <div class="nav-item px-3">
+                    <NavLink class="nav-link" href="/admin/settings">
+                        <i class="fa-solid fa-gear" aria-hidden="true"></i> Settings
+                    </NavLink>
+                </div>
+            </Authorized>
+        </AuthorizeView>
+    </nav>
+</div>

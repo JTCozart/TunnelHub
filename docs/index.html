@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+  <!-- Primary meta -->
+  <title>Ztpr | Self-Hosted Reverse-Proxy Tunnels You Own End to End</title>
+  <meta name="description" content="Ztpr (Zero Trust Proxy Relay) gives you instant public HTTPS tunnels for any localhost service — self-hosted on your own server and domain. Free, open-source, runs on Linux. No cloud middleman." />
+  <meta name="keywords" content="reverse proxy, tunnel, self-hosted tunnel, zero trust, https tunnel, expose localhost, lets encrypt wildcard, subdomain, blazor, open source" />
+  <meta name="author" content="Jake Cozart" />
+  <meta name="robots" content="index, follow" />
+  <meta name="theme-color" content="#4f46e5" />
+  <link rel="canonical" href="https://github.com/JTCozart/ztpr" />
+
+  <!-- Open Graph -->
+  <meta property="og:type"        content="website" />
+  <meta property="og:url"         content="https://github.com/JTCozart/ztpr" />
+  <meta property="og:title"       content="Ztpr | Self-Hosted Reverse-Proxy Tunnels" />
+  <meta property="og:description" content="Public HTTPS for any localhost service, self-hosted on your own server. Friendly subdomains, automatic wildcard TLS, API-key auth, admin UI. Free and open source." />
+  <meta property="og:site_name"   content="Ztpr" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card"        content="summary" />
+  <meta name="twitter:title"       content="Ztpr | Zero Trust Proxy Relay" />
+  <meta name="twitter:description" content="Self-hosted reverse-proxy tunnels. Friendly subdomains, automatic wildcard HTTPS, API-key auth, admin UI. Free and open source." />
+
+  <!-- JSON-LD structured data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Ztpr",
+    "alternateName": "Zero Trust Proxy Relay",
+    "applicationCategory": "DeveloperApplication",
+    "applicationSubCategory": "Reverse Proxy / Tunneling",
+    "operatingSystem": "Linux, Windows",
+    "description": "Self-hosted reverse-proxy tunnels. Expose a local service through a public HTTPS URL on your own server and domain, with friendly subdomains, automatic wildcard TLS, API-key auth, and an admin UI.",
+    "url": "https://github.com/JTCozart/ztpr",
+    "downloadUrl": "https://github.com/JTCozart/ztpr/releases/latest",
+    "softwareVersion": "latest",
+    "license": "https://github.com/JTCozart/ztpr/blob/master/LICENSE",
+    "author": {
+      "@type": "Person",
+      "name": "Jake Cozart",
+      "url": "https://github.com/JTCozart"
+    },
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD"
+    },
+    "featureList": [
+      "Self-hosted reverse-proxy tunnels",
+      "Friendly two-word ephemeral subdomains (red-tiger.tun.example.com)",
+      "Automatic wildcard HTTPS via Let's Encrypt (DNS-01)",
+      "API-key authentication with hashed keys",
+      "Invite-based registration; first user is admin",
+      "Blazor admin UI: live tunnels, users, disconnect, block",
+      "Per-key concurrent-tunnel limits and idle/lifetime reaping",
+      "Cross-platform downloadable client (Windows and Linux)",
+      "Runs as a single ASP.NET Core systemd service"
+    ]
+  }
+  </script>
+
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" />
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo:   #4f46e5;
+      --indigo-d: #4338ca;
+      --dark:     #0f172a;
+      --gray:     #64748b;
+      --light:    #f8fafc;
+      --border:   #e2e8f0;
+      --mono:     'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+      --radius:   12px;
+    }
+
+    body { font-family: 'Inter', sans-serif; color: var(--dark); background: #fff; line-height: 1.6; }
+
+    a { color: var(--indigo); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Nav */
+    nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 2rem; border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; background: rgba(255,255,255,.95);
+      backdrop-filter: blur(8px); z-index: 100;
+    }
+    .nav-brand {
+      display: flex; align-items: center; gap: .6rem;
+      font-weight: 700; font-size: 1.1rem; color: var(--dark); text-decoration: none;
+    }
+    .zt-badge {
+      width: 32px; height: 32px; border-radius: 8px;
+      background: var(--indigo); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: .85rem; letter-spacing: -.5px; flex-shrink: 0;
+    }
+    .nav-links { display: flex; gap: 1.5rem; align-items: center; }
+    .nav-links a { color: var(--gray); font-size: .9rem; font-weight: 500; }
+    .nav-links a:hover { color: var(--dark); text-decoration: none; }
+    .btn-nav {
+      background: var(--indigo); color: #fff !important;
+      padding: .45rem 1rem; border-radius: 8px; font-weight: 600;
+    }
+    .btn-nav:hover { background: var(--indigo-d); }
+    .nav-toggle {
+      display: none; background: none; border: none; cursor: pointer;
+      padding: .35rem; color: var(--dark); font-size: 1.35rem; line-height: 1;
+    }
+    .nav-mobile {
+      display: none; position: absolute; top: 100%; left: 0; right: 0;
+      background: #fff; border-bottom: 1px solid var(--border);
+      padding: .75rem 1.5rem 1rem; flex-direction: column;
+      box-shadow: 0 6px 16px rgba(0,0,0,.08);
+    }
+    .nav-mobile.open { display: flex; }
+    .nav-mobile a {
+      color: var(--gray); font-size: .95rem; font-weight: 500;
+      padding: .65rem .25rem; border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .nav-mobile a:hover { color: var(--dark); text-decoration: none; }
+    .nav-mobile .btn-nav {
+      margin-top: .5rem; border-bottom: none; border-radius: 8px;
+      padding: .65rem 1rem; justify-content: center;
+    }
+
+    /* Hero */
+    .hero {
+      text-align: center; padding: 6rem 2rem 5rem;
+      background: linear-gradient(160deg, #eef2ff 0%, #fff 60%);
+    }
+    .hero-tag {
+      display: inline-block; background: #e0e7ff; color: var(--indigo);
+      font-size: .78rem; font-weight: 600; padding: .25rem .75rem;
+      border-radius: 99px; margin-bottom: 1.5rem; letter-spacing: .04em; text-transform: uppercase;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem); font-weight: 800;
+      line-height: 1.15; max-width: 820px; margin: 0 auto 1.25rem;
+    }
+    .hero h1 span { color: var(--indigo); }
+    .hero p {
+      font-size: 1.15rem; color: var(--gray);
+      max-width: 600px; margin: 0 auto 2.5rem;
+    }
+    .hero-cta { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+    .btn-primary {
+      background: var(--indigo); color: #fff; padding: .75rem 1.75rem;
+      border-radius: 10px; font-weight: 700; font-size: 1rem;
+      display: inline-flex; align-items: center; gap: .5rem;
+      box-shadow: 0 4px 14px rgba(79,70,229,.35);
+    }
+    .btn-primary:hover { background: var(--indigo-d); text-decoration: none; }
+    .btn-secondary {
+      background: #fff; color: var(--dark); padding: .75rem 1.75rem;
+      border-radius: 10px; font-weight: 600; font-size: 1rem;
+      border: 1.5px solid var(--border); display: inline-flex; align-items: center; gap: .5rem;
+    }
+    .btn-secondary:hover { border-color: var(--indigo); text-decoration: none; }
+
+    /* UI preview */
+    .ui-preview {
+      max-width: 900px; margin: 4rem auto 0;
+      background: var(--light); border-radius: var(--radius);
+      border: 1px solid var(--border); overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0,0,0,.1); text-align: left;
+    }
+    .ui-bar {
+      background: var(--dark); padding: .6rem 1rem;
+      display: flex; gap: .4rem; align-items: center;
+    }
+    .ui-dot { width: 12px; height: 12px; border-radius: 50%; }
+
+    /* Terminal mock */
+    .term {
+      background: #0b1020; padding: 1rem 1.25rem; font-family: var(--mono);
+      font-size: .82rem; line-height: 1.7; color: #cbd5e1; overflow-x: auto;
+    }
+    .term .c-prompt { color: #818cf8; }
+    .term .c-flag   { color: #38bdf8; }
+    .term .c-ok     { color: #4ade80; }
+    .term .c-dim    { color: #64748b; }
+    .term .c-url    { color: #fcd34d; }
+
+    /* App mock — mirrors the Blazor layout: dark sidebar + main content */
+    .ui-mock { display: flex; min-height: 320px; background:#fff; }
+    .ui-side {
+      width: 190px; flex-shrink: 0; background: #1b2433;
+      background-image: linear-gradient(180deg,#283449,#1b2433);
+      display: flex; flex-direction: column; padding-bottom: .5rem;
+    }
+    .ui-side-brand {
+      color: #fff; font-weight: 700; font-size: .9rem; padding: .7rem .9rem;
+      background: rgba(0,0,0,.18); display: flex; align-items: center; gap: .45rem;
+    }
+    .ui-nav { display: flex; flex-direction: column; padding: .4rem 0; gap: 1px; }
+    .ui-nav a {
+      color: #c4ccd8; font-size: .76rem; padding: .4rem .9rem;
+      display: flex; align-items: center; gap: .5rem; border-left: 3px solid transparent;
+    }
+    .ui-nav a .bi { width: 14px; opacity: .8; font-size: .72rem; }
+    .ui-nav a.active { background: rgba(79,70,229,.30); color: #fff; border-left-color: var(--indigo); }
+    .ui-nav .ui-nav-sec { color: #6b7689; font-size: .6rem; text-transform: uppercase; letter-spacing: .08em; padding: .55rem .9rem .2rem; font-weight: 700; }
+    .ui-main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+    .ui-topbar {
+      display: flex; align-items: center; justify-content: flex-end; gap: .6rem;
+      padding: .5rem .9rem; border-bottom: 1px solid var(--border); background:#fff;
+    }
+    .ui-topbar .who { color: var(--gray); font-size: .72rem; }
+    .ui-topbar .signout { font-size: .68rem; color: var(--gray); border: 1px solid var(--border); border-radius: 6px; padding: .15rem .5rem; }
+    .ui-content { padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: .6rem; flex: 1; }
+    .ui-content h4 { font-size: .95rem; font-weight: 700; }
+    .ui-content .sub { color: var(--gray); font-size: .72rem; margin-bottom: .2rem; }
+    .ui-table { width: 100%; border-collapse: collapse; font-size: .73rem; }
+    .ui-table th { text-align: left; font-size: .62rem; text-transform: uppercase; letter-spacing: .04em; color: #94a3b8; font-weight: 700; padding: .3rem .6rem; border-bottom: 1px solid var(--border); }
+    .ui-table td { padding: .42rem .6rem; border-bottom: 1px solid var(--border); }
+    .ui-table tr:last-child td { border: none; }
+    .ui-table .mono { font-family: var(--mono); font-size: .7rem; }
+    .ui-table a.link { color: var(--indigo); }
+    .badge { display: inline-block; padding: .12rem .4rem; border-radius: 4px; font-size: .64rem; font-weight: 600; }
+    .badge-indigo { background: #e0e7ff; color: #4338ca; }
+    .badge-green { background: #dcfce7; color: #166534; }
+    .badge-yellow { background: #fef9c3; color: #854d0e; }
+    @media (max-width: 560px) { .ui-side { display: none; } }
+
+    /* Sections */
+    section { padding: 5rem 2rem; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    .section-tag { color: var(--indigo); font-size: .8rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; margin-bottom: .75rem; }
+    h2 { font-size: clamp(1.6rem, 3vw, 2.25rem); font-weight: 800; margin-bottom: 1rem; }
+    .section-sub { color: var(--gray); font-size: 1.05rem; max-width: 600px; margin-bottom: 3rem; }
+
+    /* Features */
+    .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem; }
+    .feature-card {
+      border: 1.5px solid var(--border); border-radius: var(--radius);
+      padding: 1.5rem; transition: border-color .2s, box-shadow .2s;
+    }
+    .feature-card:hover { border-color: var(--indigo); box-shadow: 0 4px 20px rgba(79,70,229,.1); }
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      background: #eef2ff; color: var(--indigo);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem; margin-bottom: 1rem;
+    }
+    .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: .4rem; }
+    .feature-card p { font-size: .9rem; color: var(--gray); }
+
+    /* How it works */
+    .steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 2rem; }
+    .step { text-align: center; }
+    .step-num {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--indigo); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1.1rem; margin: 0 auto 1rem;
+    }
+    .step h3 { font-weight: 700; margin-bottom: .4rem; }
+    .step p { color: var(--gray); font-size: .9rem; }
+
+    /* CTA */
+    .cta-section { background: var(--dark); color: #fff; text-align: center; padding: 5rem 2rem; }
+    .cta-section h2 { color: #fff; margin-bottom: 1rem; }
+    .cta-section p { color: #94a3b8; max-width: 520px; margin: 0 auto 2rem; }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border); padding: 2rem;
+      display: flex; justify-content: space-between; align-items: center;
+      flex-wrap: wrap; gap: 1rem; color: var(--gray); font-size: .85rem;
+    }
+    footer a { color: var(--gray); }
+
+    @media (max-width: 640px) {
+      nav { padding: 1rem; }
+      .nav-links { display: none; }
+      .nav-toggle { display: block; }
+      .ui-stat-row { flex-wrap: wrap; }
+      .ui-stat { min-width: 45%; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-brand" href="#">
+    <div class="zt-badge">ZT</div>
+    Ztpr
+  </a>
+  <div class="nav-links">
+    <a href="index.html">Home</a>
+    <a href="getting-started.html">Getting Started</a>
+    <a href="user-guide.html">User Guide</a>
+    <a href="https://github.com/JTCozart/ztpr" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <a href="https://github.com/JTCozart/ztpr/releases/latest" class="btn-nav" target="_blank" rel="noopener noreferrer">
+      <i class="fa-solid fa-download"></i> Download
+    </a>
+  </div>
+  <button class="nav-toggle" aria-label="Open menu" aria-expanded="false">
+    <i class="fa-solid fa-bars"></i>
+  </button>
+  <div class="nav-mobile" role="menu">
+    <a href="index.html"><i class="fa-solid fa-house fa-fw"></i> Home</a>
+    <a href="getting-started.html"><i class="fa-solid fa-rocket fa-fw"></i> Getting Started</a>
+    <a href="user-guide.html"><i class="fa-solid fa-book fa-fw"></i> User Guide</a>
+    <a href="https://github.com/JTCozart/ztpr" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-github fa-fw"></i> GitHub</a>
+    <a href="https://github.com/JTCozart/ztpr/releases/latest" class="btn-nav" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-download"></i> Download</a>
+  </div>
+</nav>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-tag">Free &amp; Open Source &nbsp;·&nbsp; Self-Hosted</div>
+  <h1>Public HTTPS for localhost —<br><span>without the middleman</span></h1>
+  <p>Ztpr is a Zero Trust Proxy Relay: public HTTPS tunnels you run on your own server and domain. Friendly subdomains, automatic wildcard TLS, and an admin UI. Your traffic never touches a third party.</p>
+  <div class="hero-cta">
+    <a href="getting-started.html" class="btn-primary">
+      <i class="fa-solid fa-rocket"></i> Get Started
+    </a>
+    <a href="https://github.com/JTCozart/ztpr" class="btn-secondary" target="_blank" rel="noopener noreferrer">
+      <i class="fa-brands fa-github"></i> View on GitHub
+    </a>
+  </div>
+
+  <!-- Terminal + dashboard mock -->
+  <div class="ui-preview">
+    <div class="ui-bar">
+      <div class="ui-dot" style="background:#ff5f57"></div>
+      <div class="ui-dot" style="background:#febc2e"></div>
+      <div class="ui-dot" style="background:#28c840"></div>
+    </div>
+    <div class="term">
+<span class="c-prompt">$</span> ztpr <span class="c-flag">--server</span> https://app.example.com <span class="c-flag">--key</span> ztpr_•••• <span class="c-flag">--target</span> http://localhost:3000
+<span class="c-dim">→ connecting to relay…</span>  <span class="c-ok">authenticated</span>
+<span class="c-dim">→ tunnel open.</span> public url: <span class="c-url">https://royal-spruce.tun.example.com</span>
+<span class="c-dim">  forwarding *  →  http://localhost:3000   (TLS terminated at relay)</span>
+    </div>
+    <div class="ui-mock">
+      <div class="ui-side">
+        <div class="ui-side-brand">
+          <div class="zt-badge" style="width:20px;height:20px;font-size:.55rem;border-radius:4px">ZT</div>
+          Ztpr
+        </div>
+        <nav class="ui-nav">
+          <a><span class="bi"><i class="fa-solid fa-house"></i></span> Home</a>
+          <a class="active"><span class="bi"><i class="fa-solid fa-list"></i></span> Dashboard</a>
+          <a><span class="bi"><i class="fa-solid fa-key"></i></span> API keys</a>
+          <a><span class="bi"><i class="fa-solid fa-download"></i></span> Downloads</a>
+          <div class="ui-nav-sec">Admin</div>
+          <a><span class="bi"><i class="fa-solid fa-diagram-project"></i></span> Active tunnels</a>
+          <a><span class="bi"><i class="fa-solid fa-users"></i></span> Users</a>
+          <a><span class="bi"><i class="fa-solid fa-ticket"></i></span> Invite codes</a>
+          <a><span class="bi"><i class="fa-solid fa-gear"></i></span> Settings</a>
+        </nav>
+      </div>
+      <div class="ui-main">
+        <div class="ui-topbar">
+          <span class="who">admin@example.com</span>
+          <span class="signout">Sign out</span>
+        </div>
+        <div class="ui-content">
+          <h4>Your tunnels</h4>
+          <div class="sub">Live tunnels registered to your API keys. Subdomains release automatically when idle or after 4 hours.</div>
+          <table class="ui-table">
+            <thead>
+              <tr><th>URL</th><th>Client</th><th>Started</th><th>Idle</th><th>Expires in</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><a class="link mono">royal-spruce.tun.example.com</a></td><td>web-dev</td><td>14:02</td><td>3s</td><td><span class="badge badge-indigo">3h 41m</span></td></tr>
+              <tr><td><a class="link mono">amber-otter.tun.example.com</a></td><td>api-staging</td><td>13:48</td><td>1m</td><td><span class="badge badge-indigo">3h 27m</span></td></tr>
+              <tr><td><a class="link mono">brave-finch.tun.example.com</a></td><td>10.0.0.14</td><td>13:20</td><td><span class="badge badge-yellow">4m</span></td><td><span class="badge badge-green">2h 59m</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features" style="background:var(--light)">
+  <div class="container">
+    <div class="section-tag">Features</div>
+    <h2>A tunneling service that answers to you</h2>
+    <p class="section-sub">All the convenience of a hosted tunnel, none of the third-party trust. One ASP.NET Core process on your server is the whole relay.</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon"><i class="fa-solid fa-server"></i></div>
+        <h3>You own the relay</h3>
+        <p>Self-hosted on your own server and domain. No external service ever sits in your request path or sees your traffic.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="fa-solid fa-shield-halved"></i></div>
+        <h3>Zero standing trust</h3>
+        <p>Every client authenticates with a hashed API key on each connection. Keys are shown once and stored only as SHA-256 hashes.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></div>
+        <h3>Friendly subdomains</h3>
+        <p>Each connection gets a memorable two-word host like <code>red-tiger.tun.example.com</code>, released automatically on disconnect or idle.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="fa-solid fa-lock"></i></div>
+        <h3>Automatic wildcard HTTPS</h3>
+        <p>A single Let's Encrypt wildcard cert (<code>*.tun.example.com</code>) via DNS-01 covers every tunnel — issued hands-free when you connect Amazon Route 53, or with a guided manual wizard for any DNS provider. TLS terminates at the relay; your service sees plain HTTP.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="fa-solid fa-user-shield"></i></div>
+        <h3>Invite-based access</h3>
+        <p>The first registered user is the admin; everyone else needs a single-use invite code. Block a user to instantly kill their sessions, keys, and tunnels.</p>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon"><i class="fa-solid fa-gauge-high"></i></div>
+        <h3>Operator visibility</h3>
+        <p>A Blazor admin UI shows every user, who holds which subdomain, and every active tunnel — with one-click disconnect and per-key limits.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- How it works -->
+<section id="how-it-works">
+  <div class="container">
+    <div class="section-tag">How it works</div>
+    <h2>From localhost to public URL in three steps</h2>
+    <p class="section-sub">Stand up the relay once, then open tunnels from any machine with an API key.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Host the relay</h3>
+        <p>Run the self-contained server on your Linux box and point a wildcard DNS record at it. The installer sets up the systemd service.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Connect the client</h3>
+        <p>Run the downloadable client with your API key and a local target. It opens a persistent, authenticated WebSocket to the relay.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Share the URL</h3>
+        <p>The relay assigns a subdomain and forwards public HTTPS to your local service — valid for up to four hours, released when you're done.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Run your own tunnels today</h2>
+  <p>Free, open source, and completely self-hosted. Stand up the relay and open your first tunnel in minutes.</p>
+  <a href="getting-started.html" class="btn-primary" style="display:inline-flex">
+    <i class="fa-solid fa-rocket"></i> Read the Getting Started guide
+  </a>
+</section>
+
+<footer>
+  <div>
+    <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.25rem">
+      <div class="zt-badge" style="width:24px;height:24px;font-size:.65rem;border-radius:5px">ZT</div>
+      <strong style="color:#0f172a">Ztpr</strong>
+    </div>
+    <span>GPL-3.0 License &middot; &copy; 2026 Jake Cozart</span>
+  </div>
+  <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+    <a href="getting-started.html"><i class="fa-solid fa-rocket"></i> Getting Started</a>
+    <a href="user-guide.html"><i class="fa-solid fa-book"></i> User Guide</a>
+    <a href="https://github.com/JTCozart/ztpr" target="_blank" rel="noopener noreferrer"><i class="fa-brands fa-github"></i> GitHub</a>
+    <a href="https://github.com/JTCozart/ztpr/releases" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-tag"></i> Releases</a>
+    <a href="https://github.com/JTCozart/ztpr/blob/master/NOTICE" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-file-lines"></i> Notices</a>
+    <a href="https://linktr.ee/jtczrt" target="_blank" rel="noopener noreferrer"><i class="fa-solid fa-tree"></i> Linktree</a>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    var toggle = document.querySelector('.nav-toggle');
+    var menu   = document.querySelector('.nav-mobile');
+    toggle.addEventListener('click', function () {
+      var open = menu.classList.toggle('open');
+      toggle.setAttribute('aria-expanded', open);
+      toggle.querySelector('i').className = open ? 'fa-solid fa-xmark' : 'fa-solid fa-bars';
+    });
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('nav')) {
+        menu.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.querySelector('i').className = 'fa-solid fa-bars';
+      }
+    });
+    menu.querySelectorAll('a').forEach(function (a) {
+      a.addEventListener('click', function () {
+        menu.classList.remove('open');
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.querySelector('i').className = 'fa-solid fa-bars';
+      });
+    });
+  })();
+</script>
+</body>
+</html>

@@ -31,7 +31,7 @@ using (var del = cn.CreateCommand())
 using (var ins = cn.CreateCommand())
 {
     ins.CommandText = @"INSERT INTO ApiKeys (Id,OwnerId,Label,DisplayPrefix,KeyHash,CreatedAt,IsActive)
-                        VALUES ($id,$o,'e2e','th_e2e…',$h,$t,1)";
+                        VALUES ($id,$o,'e2e','ztpr_e2e…',$h,$t,1)";
     // EF Core stores GUIDs as UPPERCASE text in SQLite; match that so the Tunnel FK resolves.
     ins.Parameters.AddWithValue("$id", Guid.NewGuid().ToString().ToUpperInvariant());
     ins.Parameters.AddWithValue("$o", uid);

@@ -1,0 +1,42 @@
+Ztpr (Zero Trust Proxy Relay)
+Copyright (C) 2026 Jake Cozart
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version. See the LICENSE file for the full text.
+
+--------------------------------------------------------------------------------
+Third-party software
+--------------------------------------------------------------------------------
+
+This product bundles and/or depends on the following third-party packages. Each
+remains under its own license; the notices below are provided for attribution.
+
+Server (src/Ztpr.Server):
+  - Certes ......................................... MIT
+      ACME client used for Let's Encrypt certificate issuance.
+      https://github.com/fszlin/certes
+  - Microsoft.AspNetCore.Identity.EntityFrameworkCore  MIT
+  - Microsoft.EntityFrameworkCore.Design ........... MIT
+  - Microsoft.EntityFrameworkCore.Sqlite ........... MIT
+      Part of the ASP.NET Core / .NET platform by the .NET Foundation.
+      https://github.com/dotnet/aspnetcore
+      https://github.com/dotnet/efcore
+
+Client (src/Ztpr.Client):
+  - Microsoft.Data.Sqlite .......................... MIT
+      https://github.com/dotnet/efcore
+
+Web UI assets (src/Ztpr.Server/wwwroot/lib):
+  - Bootstrap ...................................... MIT
+      https://github.com/twbs/bootstrap
+
+Test projects (tests/Ztpr.Tests):
+  - xunit .......................................... Apache-2.0
+  - xunit.runner.visualstudio ...................... Apache-2.0 / MIT
+  - Microsoft.NET.Test.Sdk ......................... MIT
+  - coverlet.collector ............................. MIT
+
+Full license texts for these packages are available in the NuGet package cache
+and in each project's upstream repository.

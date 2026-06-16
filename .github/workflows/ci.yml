@@ -19,10 +19,10 @@ jobs:
           dotnet-version: '9.0.x'
 
       - name: Restore
-        run: dotnet restore TunnelHub.sln
+        run: dotnet restore Ztpr.sln
 
       - name: Build
-        run: dotnet build TunnelHub.sln -c Release --no-restore
+        run: dotnet build Ztpr.sln -c Release --no-restore
 
       - name: Test
-        run: dotnet test TunnelHub.sln -c Release --no-build --verbosity normal
+        run: dotnet test Ztpr.sln -c Release --no-build --verbosity normal

@@ -1,0 +1,9 @@
+User-agent: *
+Allow: /
+
+# Block crawlers from build artifacts and raw assets that add no search value
+Disallow: /*.svg$
+Disallow: /_config.yml
+
+# Sitemap
+Sitemap: https://jtcozart.github.io/ztpr/sitemap.xml

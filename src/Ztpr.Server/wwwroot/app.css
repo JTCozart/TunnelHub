@@ -1,0 +1,346 @@
+/* ---------------------------------------------------------------------------
+   Design tokens — one place to tune the brand. The sidebar (NavMenu) already
+   uses the indigo accent; everything else is aligned to it here.
+   --------------------------------------------------------------------------- */
+:root {
+    --zt-primary: #4f46e5;        /* indigo-600, matches the sidebar accent */
+    --zt-primary-hover: #4338ca;  /* indigo-700 */
+    --zt-primary-rgb: 79, 70, 229;
+    --zt-ink: #1f2430;            /* primary text */
+    --zt-muted: #6b7280;          /* secondary text */
+    --zt-border: #e6e8ec;
+    --zt-surface: #ffffff;
+    --zt-bg: #f6f7f9;             /* app content background */
+    --zt-radius: 10px;
+
+    --bs-link-color: var(--zt-primary);
+    --bs-link-hover-color: var(--zt-primary-hover);
+}
+
+html, body {
+    font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    color: var(--zt-ink);
+    background-color: var(--zt-bg);
+    -webkit-font-smoothing: antialiased;
+}
+
+/* ---------------------------------------------------------------------------
+   Typography / page headers — uniform title + subtitle on every content page.
+   --------------------------------------------------------------------------- */
+.content {
+    padding-top: 1.5rem;
+    padding-bottom: 3rem;
+}
+
+.content h1 {
+    font-size: 1.6rem;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin-bottom: 0.35rem;
+}
+
+/* The intro paragraph that follows a page title reads as a muted subtitle. */
+.content h1 + p {
+    color: var(--zt-muted);
+    max-width: 72ch;
+    margin-bottom: 1.75rem;
+}
+
+.content h2 {
+    font-size: 1.2rem;
+    font-weight: 650;
+    margin-top: 2rem;
+    margin-bottom: 0.75rem;
+}
+
+.content h4 {
+    font-size: 1.05rem;
+    font-weight: 650;
+}
+
+h1:focus {
+    outline: none;
+}
+
+a, .btn-link {
+    color: var(--zt-primary);
+    text-underline-offset: 2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons — recolor Bootstrap's component variables to the brand.
+   --------------------------------------------------------------------------- */
+.btn {
+    --bs-btn-font-weight: 500;
+    --bs-btn-border-radius: 8px;
+}
+
+.btn-primary {
+    --bs-btn-bg: var(--zt-primary);
+    --bs-btn-border-color: var(--zt-primary);
+    --bs-btn-hover-bg: var(--zt-primary-hover);
+    --bs-btn-hover-border-color: var(--zt-primary-hover);
+    --bs-btn-active-bg: var(--zt-primary-hover);
+    --bs-btn-active-border-color: var(--zt-primary-hover);
+    --bs-btn-disabled-bg: var(--zt-primary);
+    --bs-btn-disabled-border-color: var(--zt-primary);
+    color: #fff;
+}
+
+.btn-outline-primary {
+    --bs-btn-color: var(--zt-primary);
+    --bs-btn-border-color: var(--zt-primary);
+    --bs-btn-hover-bg: var(--zt-primary);
+    --bs-btn-hover-border-color: var(--zt-primary);
+    --bs-btn-active-bg: var(--zt-primary);
+    --bs-btn-active-border-color: var(--zt-primary);
+}
+
+.btn:focus, .btn:active:focus, .btn-link.nav-link:focus,
+.form-control:focus, .form-select:focus, .form-check-input:focus {
+    box-shadow: 0 0 0 0.2rem rgba(var(--zt-primary-rgb), 0.25);
+}
+
+/* ---------------------------------------------------------------------------
+   Forms
+   --------------------------------------------------------------------------- */
+.form-control, .form-select {
+    border-color: #d6d9df;
+    border-radius: 8px;
+}
+
+.form-control:focus, .form-select:focus {
+    border-color: rgba(var(--zt-primary-rgb), 0.55);
+}
+
+.form-check-input:checked {
+    background-color: var(--zt-primary);
+    border-color: var(--zt-primary);
+}
+
+.form-label {
+    font-weight: 500;
+    margin-bottom: 0.35rem;
+}
+
+.form-text {
+    color: var(--zt-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Cards
+   --------------------------------------------------------------------------- */
+.card {
+    border: 1px solid var(--zt-border);
+    border-radius: var(--zt-radius);
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04);
+}
+
+.card-title {
+    font-weight: 650;
+}
+
+/* ---------------------------------------------------------------------------
+   Tabs — clean underline style (used on the Settings page).
+   --------------------------------------------------------------------------- */
+.nav-tabs {
+    border-bottom: 1px solid var(--zt-border);
+    gap: 0.25rem;
+}
+
+.nav-tabs .nav-link {
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--zt-muted);
+    font-weight: 500;
+    padding: 0.6rem 0.9rem;
+    margin-bottom: -1px;
+}
+
+.nav-tabs .nav-link:hover {
+    color: var(--zt-ink);
+    border-bottom-color: var(--zt-border);
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--zt-primary);
+    background: transparent;
+    border-bottom-color: var(--zt-primary);
+}
+
+/* ---------------------------------------------------------------------------
+   Tables — contained white surface with a quiet, uppercase header.
+   --------------------------------------------------------------------------- */
+.content .table {
+    --bs-table-bg: var(--zt-surface);
+    border-collapse: separate;
+    border-spacing: 0;
+    width: 100%;
+    background: var(--zt-surface);
+    border: 1px solid var(--zt-border);
+    border-radius: var(--zt-radius);
+    overflow: hidden;
+    margin-bottom: 1.75rem;
+}
+
+.content .table > thead th {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-weight: 600;
+    color: var(--zt-muted);
+    background: #fafbfc;
+    border-bottom: 1px solid var(--zt-border);
+    padding: 0.6rem 0.85rem;
+}
+
+.content .table > tbody td {
+    vertical-align: middle;
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid #eef0f3;
+}
+
+.content .table > tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.content .table > tbody tr:hover td {
+    background: rgba(var(--zt-primary-rgb), 0.025);
+}
+
+/* ---------------------------------------------------------------------------
+   Badges
+   --------------------------------------------------------------------------- */
+.badge {
+    font-weight: 600;
+    padding: 0.35em 0.6em;
+    border-radius: 6px;
+}
+
+/* ---------------------------------------------------------------------------
+   Inline code reads as a subtle brand chip; standalone code blocks are quiet
+   bordered panels. (Anything already given a bg-* utility is left alone.)
+   --------------------------------------------------------------------------- */
+.content :not(pre) > code {
+    background: rgba(var(--zt-primary-rgb), 0.08);
+    color: var(--zt-primary);
+    padding: 0.1rem 0.35rem;
+    border-radius: 5px;
+    font-size: 0.85em;
+}
+
+.content pre:not([class*="bg-"]) {
+    background: #f6f7f9;
+    border: 1px solid var(--zt-border);
+    border-radius: var(--zt-radius);
+    padding: 0.9rem 1rem;
+    font-size: 0.85rem;
+    overflow-x: auto;
+}
+
+.content pre code {
+    color: inherit;
+    background: none;
+    padding: 0;
+}
+
+/* Verbose live log for automatic certificate issuance. */
+.content pre.issue-log {
+    background: #0f172a;
+    color: #e2e8f0;
+    border: 1px solid #1e293b;
+    border-radius: var(--zt-radius);
+    padding: 0.9rem 1rem;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    max-height: 320px;
+    max-width: 820px;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+/* ---------------------------------------------------------------------------
+   Auth screens — share the sidebar's brand identity.
+   --------------------------------------------------------------------------- */
+.auth-shell {
+    max-width: 400px;
+    margin: 8vh auto;
+    padding: 0 1rem;
+}
+
+.auth-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    color: var(--zt-ink);
+}
+
+.auth-brand .zt-badge {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--zt-primary);
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.8rem;
+    letter-spacing: -0.5px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.auth-card {
+    border: 1px solid var(--zt-border);
+    border-radius: var(--zt-radius);
+    padding: 1.9rem;
+    background: var(--zt-surface);
+    box-shadow: 0 4px 16px rgba(16, 24, 40, 0.06);
+}
+
+.auth-card h1 {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #26b050;
+}
+
+.invalid {
+    outline: 1px solid #e50000;
+}
+
+.validation-message {
+    color: #e50000;
+}
+
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, #b32121;
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: white;
+}
+
+    .blazor-error-boundary::after {
+        content: "An error has occurred."
+    }
+
+.darker-border-checkbox.form-check-input {
+    border-color: #929292;
+}
+
+.form-floating > .form-control-plaintext::placeholder, .form-floating > .form-control::placeholder {
+    color: var(--bs-secondary-color);
+    text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
+    text-align: start;
+}
