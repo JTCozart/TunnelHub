@@ -40,19 +40,36 @@ public sealed class AcmeService(
         return hosts.ToList();
     }
 
+    /// <summary>Per-host result of a managed-cert upkeep pass, for reporting in the UI.</summary>
+    public sealed record CertOutcome(string Host, string Status, string? Detail);
+
     /// <summary>
     /// Ensure every managed host has a current certificate, renewing any that
     /// expire within the configured window, and prune expired certs. Called at
-    /// startup and on a schedule by the renewal service.
+    /// startup and on a schedule by the renewal service. Returns a per-host
+    /// summary so the admin UI can report exactly what happened.
     /// </summary>
-    public async Task EnsureManagedAndRenewAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<CertOutcome>> EnsureManagedAndRenewAsync(CancellationToken ct = default)
     {
+        var results = new List<CertOutcome>();
         var cfg = await settings.GetAsync();
         if (!cfg.AcmeEnabled || !cfg.AcmeAgreeTos || string.IsNullOrWhiteSpace(cfg.AcmeEmail))
-            return;
+        {
+            results.Add(new CertOutcome("(ACME)", "disabled",
+                "Enable certificates, set a contact email, and agree to the Terms of Service first."));
+            return results;
+        }
+
+        var hosts = await GetManagedHostsAsync();
+        if (hosts.Count == 0)
+        {
+            results.Add(new CertOutcome("(none)", "skipped",
+                "No managed hosts. Set the app host to a public domain (not localhost) or add hostnames below."));
+            return results;
+        }
 
         var window = TimeSpan.FromDays(Math.Max(1, cfg.RenewWithinDays));
-        foreach (var host in await GetManagedHostsAsync())
+        foreach (var host in hosts)
         {
             ct.ThrowIfCancellationRequested();
             try
@@ -63,20 +80,28 @@ public sealed class AcmeService(
                 {
                     logger.LogInformation("Provisioning certificate for managed host {Host}", host);
                     await IssueAsync(host);
+                    results.Add(new CertOutcome(host, "issued", null));
                 }
                 else if (dueForRenewal)
                 {
                     logger.LogInformation("Renewing certificate for {Host} (expires {Expiry:u})", host, notAfter);
                     await IssueAsync(host, force: true);
+                    results.Add(new CertOutcome(host, "renewed", null));
+                }
+                else
+                {
+                    results.Add(new CertOutcome(host, "current", $"valid until {notAfter:u}"));
                 }
             }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Managed certificate upkeep failed for {Host}", host);
+                results.Add(new CertOutcome(host, "failed", ex.Message));
             }
         }
 
         await certificates.PruneExpiredAsync();
+        return results;
     }
 
     /// <summary>Kick off issuance for a host without blocking the caller. Safe to call repeatedly.</summary>

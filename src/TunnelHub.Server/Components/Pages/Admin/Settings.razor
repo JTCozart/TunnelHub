@@ -76,9 +76,20 @@
         {
             <div class="alert alert-danger">@_error</div>
         }
-        @if (!string.IsNullOrEmpty(_info))
+        @if (_outcomes is not null)
         {
-            <div class="alert alert-info">@_info</div>
+            <div class="alert @(_outcomes.Any(o => o.Status == "failed") ? "alert-warning" : "alert-info")">
+                <strong>Certificate pass results:</strong>
+                <ul class="mb-0">
+                    @foreach (var o in _outcomes)
+                    {
+                        <li>
+                            <code>@o.Host</code> — <strong>@o.Status</strong>
+                            @if (!string.IsNullOrEmpty(o.Detail)) { <text>: @o.Detail</text> }
+                        </li>
+                    }
+                </ul>
+            </div>
         }
 
         <button class="btn btn-primary" @onclick="SaveAsync">Save settings</button>
@@ -98,7 +109,7 @@
     private bool _saved;
     private bool _working;
     private string? _error;
-    private string? _info;
+    private IReadOnlyList<AcmeService.CertOutcome>? _outcomes;
     private string AppHost => Options.Value.AppHost;
 
     protected override async Task OnInitializedAsync()
@@ -119,7 +130,6 @@
     {
         _saved = false;
         _error = null;
-        _info = null;
         if (_model.AcmeEnabled && (!_model.AcmeAgreeTos || string.IsNullOrWhiteSpace(_model.AcmeEmail)))
         {
             _error = "To enable certificates you must provide an email and agree to the Terms of Service.";
@@ -141,7 +151,7 @@
     private async Task ProvisionNowAsync()
     {
         _error = null;
-        _info = null;
+        _outcomes = null;
         await SaveAsync();
         if (_error is not null)
             return;
@@ -149,8 +159,7 @@
         _working = true;
         try
         {
-            await Acme.EnsureManagedAndRenewAsync();
-            _info = "Requested certificates for all managed hosts. Check logs if a host fails (DNS + ports 80/443 must reach this server).";
+            _outcomes = await Acme.EnsureManagedAndRenewAsync();
         }
         catch (Exception ex)
         {
