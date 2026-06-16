@@ -57,10 +57,16 @@ fi
 log "Installing to $INSTALL_DIR…"
 systemctl stop tunnelhub 2>/dev/null || true
 mkdir -p "$INSTALL_DIR"
-# Don't clobber the operator's runtime config or database.
-rsync -a --exclude 'appsettings.Production.json' --exclude 'tunnelhub.db*' \
-    "$PUBLISH_DIR"/ "$INSTALL_DIR"/ 2>/dev/null || \
+# Copy app files. Operator config lives in appsettings.Production.json (preserved),
+# along with the database and ACME state. The base appsettings.json ships with the
+# bundle and is updated on upgrade. The publish output contains neither the prod
+# config nor the DB, so the cp fallback preserves them too.
+if command -v rsync >/dev/null 2>&1; then
+    rsync -a --exclude 'appsettings.Production.json' --exclude 'tunnelhub.db*' --exclude 'letsencrypt/' \
+        "$PUBLISH_DIR"/ "$INSTALL_DIR"/
+else
     cp -r "$PUBLISH_DIR"/. "$INSTALL_DIR"/
+fi
 chmod +x "$INSTALL_DIR/TunnelHub.Server"
 
 # --- Optional runtime overrides → appsettings.Production.json ---
