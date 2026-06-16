@@ -77,9 +77,25 @@ Enable it:
 
 1. Set `"Tls": { "Enabled": true }` so Kestrel listens on **80** (challenges)
    and **443** (HTTPS with per-host SNI certs). Ports 80 and 443 must be
-   reachable from the internet.
+   reachable from the internet. (`install.sh` does this with `TUNNELHUB_TLS=true`.)
 2. Sign in as admin → **Settings** → enter a contact email, tick *agree to the
    Terms of Service*, and (recommended while testing) keep **Use staging** on.
+
+### Root / app domain HTTPS + auto-renewal
+
+Tunnel subdomains get a cert on demand at registration. **Long-lived hosts**
+(your management/app host and root/apex domain) are handled separately:
+
+- The configured **app host is always managed automatically**. Add any other
+  hostnames (e.g. your apex domain) under **Settings → Hostnames to keep
+  secured**. All of these are served on **443** via SNI alongside tunnel
+  subdomains.
+- A background **renewal service** (`CertificateRenewalService`) provisions
+  missing managed certs at startup and renews them before expiry (default 30
+  days, configurable), and prunes expired certs. Tunnel-subdomain certs are
+  short-lived and never need renewal.
+- The **Provision / renew now** button on the Settings page forces an immediate
+  pass (useful right after pointing DNS at the server).
 
 ### ⚠️ Rate limits — important
 

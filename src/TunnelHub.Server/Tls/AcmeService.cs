@@ -3,6 +3,8 @@ using System.Security.Cryptography.X509Certificates;
 using Certes;
 using Certes.Acme;
 using Certes.Acme.Resource;
+using Microsoft.Extensions.Options;
+using TunnelHub.Server.Configuration;
 using TunnelHub.Server.Data.Entities;
 using TunnelHub.Server.Services;
 
@@ -18,9 +20,64 @@ public sealed class AcmeService(
     SettingsService settings,
     CertificateStore certificates,
     AcmeChallengeStore challenges,
+    IOptions<TunnelHubOptions> tunnelOptions,
     ILogger<AcmeService> logger)
 {
     private readonly ConcurrentDictionary<string, Task> _inFlight = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The long-lived hosts that should always have a current cert: the app host plus any admin-configured names.</summary>
+    public async Task<IReadOnlyList<string>> GetManagedHostsAsync()
+    {
+        var cfg = await settings.GetAsync();
+        var hosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var appHost = tunnelOptions.Value.AppHost;
+        // Skip non-public dev hosts.
+        if (!string.IsNullOrWhiteSpace(appHost) &&
+            !appHost.Equals("localhost", StringComparison.OrdinalIgnoreCase))
+            hosts.Add(appHost.ToLowerInvariant());
+        foreach (var h in cfg.ManagedHostList())
+            hosts.Add(h);
+        return hosts.ToList();
+    }
+
+    /// <summary>
+    /// Ensure every managed host has a current certificate, renewing any that
+    /// expire within the configured window, and prune expired certs. Called at
+    /// startup and on a schedule by the renewal service.
+    /// </summary>
+    public async Task EnsureManagedAndRenewAsync(CancellationToken ct = default)
+    {
+        var cfg = await settings.GetAsync();
+        if (!cfg.AcmeEnabled || !cfg.AcmeAgreeTos || string.IsNullOrWhiteSpace(cfg.AcmeEmail))
+            return;
+
+        var window = TimeSpan.FromDays(Math.Max(1, cfg.RenewWithinDays));
+        foreach (var host in await GetManagedHostsAsync())
+        {
+            ct.ThrowIfCancellationRequested();
+            try
+            {
+                var hasCert = certificates.TryGetExpiry(host, out var notAfter);
+                var dueForRenewal = hasCert && notAfter - DateTimeOffset.UtcNow <= window;
+                if (!hasCert)
+                {
+                    logger.LogInformation("Provisioning certificate for managed host {Host}", host);
+                    await IssueAsync(host);
+                }
+                else if (dueForRenewal)
+                {
+                    logger.LogInformation("Renewing certificate for {Host} (expires {Expiry:u})", host, notAfter);
+                    await IssueAsync(host, force: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Managed certificate upkeep failed for {Host}", host);
+            }
+        }
+
+        await certificates.PruneExpiredAsync();
+    }
 
     /// <summary>Kick off issuance for a host without blocking the caller. Safe to call repeatedly.</summary>
     public void EnsureInBackground(string host)
@@ -36,12 +93,19 @@ public sealed class AcmeService(
         }));
     }
 
-    /// <summary>Issue (or reuse) a certificate for a single host. Returns the cert or null if disabled/failed.</summary>
-    public async Task<X509Certificate2?> IssueAsync(string host)
+    /// <summary>
+    /// Issue (or reuse) a certificate for a single host. Returns the cert or null
+    /// if disabled/failed. Pass <paramref name="force"/> to reissue even when a
+    /// valid cached cert exists (used for renewal).
+    /// </summary>
+    public async Task<X509Certificate2?> IssueAsync(string host, bool force = false)
     {
-        var existing = certificates.Get(host);
-        if (existing is not null)
-            return existing;
+        if (!force)
+        {
+            var existing = certificates.Get(host);
+            if (existing is not null)
+                return existing;
+        }
 
         var cfg = await settings.GetAsync();
         if (!cfg.AcmeEnabled || !cfg.AcmeAgreeTos || string.IsNullOrWhiteSpace(cfg.AcmeEmail))

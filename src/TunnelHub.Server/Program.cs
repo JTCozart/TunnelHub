@@ -36,6 +36,8 @@ if (tlsEnabled)
             https.ServerCertificateSelector = (_, host) => sniSelector.Select(host);
         }));
     });
+    // Keep managed-host (app/root domain) certs provisioned and renewed.
+    builder.Services.AddHostedService<CertificateRenewalService>();
 }
 
 // --- Data ---

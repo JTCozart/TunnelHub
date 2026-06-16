@@ -49,6 +49,37 @@ public sealed class CertificateStore(IServiceScopeFactory scopeFactory, ILogger<
         return null;
     }
 
+    /// <summary>Expiry of the cached cert for a host, regardless of how soon it expires.</summary>
+    public bool TryGetExpiry(string host, out DateTimeOffset notAfter)
+    {
+        if (_cache.TryGetValue(host, out var cert))
+        {
+            notAfter = cert.NotAfter.ToUniversalTime();
+            return true;
+        }
+        notAfter = default;
+        return false;
+    }
+
+    /// <summary>Drop expired certificates from the cache and DB to keep things tidy.</summary>
+    public async Task PruneExpiredAsync()
+    {
+        var expired = _cache
+            .Where(kv => kv.Value.NotAfter.ToUniversalTime() <= DateTime.UtcNow)
+            .Select(kv => kv.Key)
+            .ToList();
+        if (expired.Count == 0)
+            return;
+
+        foreach (var host in expired)
+            _cache.TryRemove(host, out _);
+
+        using var scope = scopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await db.IssuedCertificates.Where(c => expired.Contains(c.Host)).ExecuteDeleteAsync();
+        logger.LogInformation("Pruned {Count} expired certificate(s)", expired.Count);
+    }
+
     /// <summary>Cache + persist a freshly issued cert.</summary>
     public async Task SaveAsync(string host, X509Certificate2 cert)
     {
