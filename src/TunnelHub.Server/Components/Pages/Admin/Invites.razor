@@ -1,0 +1,94 @@
+@page "/admin/invites"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<PageTitle>Invite codes · Admin</PageTitle>
+
+<h1>Invite codes</h1>
+<p>Share a code so a new user can register. Each code is single-use.</p>
+
+<div class="card mb-4" style="max-width: 520px;">
+    <div class="card-body">
+        <h5 class="card-title">Generate a code</h5>
+        <div class="row g-2 align-items-end">
+            <div class="col">
+                <label class="form-label">Expires in (days, optional)</label>
+                <input class="form-control" type="number" min="1" @bind="_expiryDays" />
+            </div>
+            <div class="col-auto">
+                <button class="btn btn-primary" @onclick="GenerateAsync">Generate</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_codes.Count == 0)
+{
+    <p class="text-muted">No invite codes yet.</p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr><th>Code</th><th>Created</th><th>Expires</th><th>Status</th></tr>
+        </thead>
+        <tbody>
+            @foreach (var c in _codes)
+            {
+                <tr>
+                    <td><code>@c.Code</code></td>
+                    <td>@c.CreatedAt.LocalDateTime.ToString("g")</td>
+                    <td>@(c.ExpiresAt?.LocalDateTime.ToString("g") ?? "never")</td>
+                    <td>@StatusOf(c)</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    private List<InviteCode> _codes = [];
+    private int? _expiryDays;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        // SQLite can't ORDER BY DateTimeOffset, so order in memory.
+        var codes = await db.InviteCodes.ToListAsync();
+        _codes = codes.OrderByDescending(c => c.CreatedAt).ToList();
+    }
+
+    private async Task GenerateAsync()
+    {
+        var state = await AuthState;
+        var userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        await using var db = await DbFactory.CreateDbContextAsync();
+        db.InviteCodes.Add(new InviteCode
+        {
+            Code = GenerateCode(),
+            CreatedByUserId = userId,
+            ExpiresAt = _expiryDays is > 0 ? DateTimeOffset.UtcNow.AddDays(_expiryDays.Value) : null,
+        });
+        await db.SaveChangesAsync();
+        await LoadAsync();
+    }
+
+    private static string StatusOf(InviteCode c) =>
+        c.IsRedeemed ? "redeemed"
+        : c.ExpiresAt is not null && c.ExpiresAt <= DateTimeOffset.UtcNow ? "expired"
+        : "available";
+
+    private static string GenerateCode()
+    {
+        const string alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(10);
+        var chars = bytes.Select(b => alphabet[b % alphabet.Length]).ToArray();
+        return new string(chars[..5]) + "-" + new string(chars[5..]);
+    }
+}

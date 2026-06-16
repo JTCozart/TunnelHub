@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Publish server (self-contained linux-x64)
+        run: |
+          dotnet publish src/TunnelHub.Server -c Release -r linux-x64 \
+            --self-contained true -o out/tunnelhub
+
+      - name: Publish clients
+        run: |
+          dotnet publish src/TunnelHub.Client -c Release -r linux-x64 \
+            --self-contained true -p:PublishSingleFile=true -o out/client-linux
+          dotnet publish src/TunnelHub.Client -c Release -r win-x64 \
+            --self-contained true -p:PublishSingleFile=true -o out/client-win
+          mkdir -p out/tunnelhub/wwwroot/downloads
+          cp out/client-linux/TunnelHub.Client out/tunnelhub/wwwroot/downloads/tunnelhub-linux-x64
+          cp out/client-win/TunnelHub.Client.exe out/tunnelhub/wwwroot/downloads/tunnelhub-win-x64.exe
+
+      - name: Bundle installer
+        run: |
+          cp deploy/install.sh out/tunnelhub/install.sh
+          cp deploy/tunnelhub.service out/tunnelhub/tunnelhub.service
+          chmod +x out/tunnelhub/install.sh out/tunnelhub/TunnelHub.Server
+          tar -C out -czf tunnelhub-linux-x64.tar.gz tunnelhub
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            tunnelhub-linux-x64.tar.gz \
+            out/tunnelhub/wwwroot/downloads/tunnelhub-win-x64.exe \
+            out/tunnelhub/wwwroot/downloads/tunnelhub-linux-x64 \
+            --title "${{ github.ref_name }}" \
+            --generate-notes

@@ -1,0 +1,106 @@
+@page "/admin/settings"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@inject SettingsService SettingsSvc
+@inject IOptions<TunnelHubOptions> Options
+
+<PageTitle>Settings · Admin</PageTitle>
+
+<h1>TLS / Let's Encrypt settings</h1>
+<p>
+    TunnelHub terminates HTTPS at the server and forwards plain HTTP to your tunneled
+    service (SSL offload). A certificate is requested per subdomain when a tunnel starts.
+</p>
+
+<div class="alert alert-warning">
+    <strong>Heads up — rate limits.</strong> Let's Encrypt allows ~50 certificates per
+    registered domain per week. Because subdomains are random and short-lived, keep
+    <em>Use staging</em> on while testing, and consider a free wildcard certificate
+    (DNS-01) for high volume — see the README.
+</div>
+
+@if (_saved)
+{
+    <div class="alert alert-success">Settings saved.</div>
+}
+
+<div class="card" style="max-width: 560px;">
+    <div class="card-body">
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="enabled" @bind="_model.AcmeEnabled" />
+            <label class="form-check-label" for="enabled">Enable automatic Let's Encrypt certificates</label>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="email">Contact email</label>
+            <input class="form-control" id="email" type="email" @bind="_model.AcmeEmail"
+                   placeholder="you@example.com" />
+            <div class="form-text">Used to register the ACME account and receive expiry notices.</div>
+        </div>
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" id="tos" @bind="_model.AcmeAgreeTos" />
+            <label class="form-check-label" for="tos">
+                I agree to the
+                <a href="https://letsencrypt.org/repository/" target="_blank">Let's Encrypt Terms of Service</a>
+            </label>
+        </div>
+
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="staging" @bind="_model.UseStaging" />
+            <label class="form-check-label" for="staging">
+                Use staging environment (recommended while testing)
+            </label>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-danger">@_error</div>
+        }
+
+        <button class="btn btn-primary" @onclick="SaveAsync">Save settings</button>
+    </div>
+</div>
+
+<p class="mt-3 text-muted">
+    Base domain: <code>*.@Options.Value.BaseDomain</code>. Ensure ports 80 and 443 reach this
+    server and <code>Tls:Enabled</code> is set, so HTTP-01 validation and HTTPS work.
+</p>
+
+@code {
+    private AdminSettings _model = new();
+    private bool _saved;
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var current = await SettingsSvc.GetAsync();
+        _model = new AdminSettings
+        {
+            AcmeEnabled = current.AcmeEnabled,
+            AcmeEmail = current.AcmeEmail,
+            AcmeAgreeTos = current.AcmeAgreeTos,
+            UseStaging = current.UseStaging,
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        _saved = false;
+        _error = null;
+        if (_model.AcmeEnabled && (!_model.AcmeAgreeTos || string.IsNullOrWhiteSpace(_model.AcmeEmail)))
+        {
+            _error = "To enable certificates you must provide an email and agree to the Terms of Service.";
+            return;
+        }
+
+        await SettingsSvc.UpdateAsync(s =>
+        {
+            s.AcmeEnabled = _model.AcmeEnabled;
+            s.AcmeEmail = _model.AcmeEmail?.Trim();
+            s.AcmeAgreeTos = _model.AcmeAgreeTos;
+            s.UseStaging = _model.UseStaging;
+        });
+        _saved = true;
+    }
+}

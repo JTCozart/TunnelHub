@@ -1,0 +1,29 @@
+namespace TunnelHub.Server.Data.Entities;
+
+/// <summary>
+/// Singleton settings row (always Id = 1) holding ACME / Let's Encrypt
+/// configuration that admins edit at runtime in the web UI.
+/// </summary>
+public class AdminSettings
+{
+    public const int SingletonId = 1;
+
+    public int Id { get; set; } = SingletonId;
+
+    /// <summary>Master switch — when off, the server serves its fallback dev cert only.</summary>
+    public bool AcmeEnabled { get; set; }
+
+    /// <summary>Contact email registered with Let's Encrypt (required by the ACME account).</summary>
+    public string? AcmeEmail { get; set; }
+
+    /// <summary>Admin must explicitly agree to the Let's Encrypt Terms of Service.</summary>
+    public bool AcmeAgreeTos { get; set; }
+
+    /// <summary>Use the staging directory (high rate limits, untrusted certs) while testing.</summary>
+    public bool UseStaging { get; set; } = true;
+
+    /// <summary>Cached PEM of the ACME account key so we reuse one registration.</summary>
+    public string? AcmeAccountKeyPem { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
+}

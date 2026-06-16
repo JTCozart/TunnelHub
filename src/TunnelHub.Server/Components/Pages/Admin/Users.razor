@@ -1,0 +1,116 @@
+@page "/admin/users"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@inject IDbContextFactory<AppDbContext> DbFactory
+@inject IServiceScopeFactory ScopeFactory
+@inject TunnelManager Manager
+
+<PageTitle>Users · Admin</PageTitle>
+
+<h1>Users</h1>
+<p>All accounts, their active tunnels, and block controls.</p>
+
+<table class="table">
+    <thead>
+        <tr><th>Email</th><th>Role</th><th>Registered</th><th>Active tunnels</th><th>Status</th><th></th></tr>
+    </thead>
+    <tbody>
+        @foreach (var row in _rows)
+        {
+            <tr class="@(row.User.IsBlocked ? "table-warning" : null)">
+                <td>@row.User.Email</td>
+                <td>@(row.IsAdmin ? "Admin" : "User")</td>
+                <td>@row.User.CreatedAt.LocalDateTime.ToString("d")</td>
+                <td>
+                    @if (row.ActiveSubdomains.Count == 0)
+                    {
+                        <span class="text-muted">—</span>
+                    }
+                    else
+                    {
+                        @string.Join(", ", row.ActiveSubdomains)
+                    }
+                </td>
+                <td>
+                    @if (row.User.IsBlocked)
+                    {
+                        <span class="badge bg-danger">blocked</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-success">active</span>
+                    }
+                </td>
+                <td>
+                    @if (row.IsAdmin)
+                    {
+                        <span class="text-muted small">protected</span>
+                    }
+                    else if (row.User.IsBlocked)
+                    {
+                        <button class="btn btn-sm btn-outline-success" @onclick="() => SetBlockedAsync(row.User.Id, false)">Unblock</button>
+                    }
+                    else
+                    {
+                        <button class="btn btn-sm btn-outline-danger" @onclick="() => SetBlockedAsync(row.User.Id, true)">Block</button>
+                    }
+                </td>
+            </tr>
+        }
+    </tbody>
+</table>
+
+@code {
+    private sealed class Row
+    {
+        public required ApplicationUser User { get; init; }
+        public bool IsAdmin { get; init; }
+        public List<string> ActiveSubdomains { get; init; } = [];
+    }
+
+    private List<Row> _rows = [];
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        await using var db = await DbFactory.CreateDbContextAsync();
+        var users = await db.Users.OrderBy(u => u.Email).ToListAsync();
+
+        // Admin role membership in one query.
+        var adminRoleId = await db.Roles.Where(r => r.Name == Roles.Admin).Select(r => r.Id).FirstOrDefaultAsync();
+        var adminIds = adminRoleId is null
+            ? new HashSet<string>()
+            : (await db.UserRoles.Where(ur => ur.RoleId == adminRoleId).Select(ur => ur.UserId).ToListAsync()).ToHashSet();
+
+        var liveByOwner = Manager.Registry.Active
+            .GroupBy(s => s.OwnerId)
+            .ToDictionary(g => g.Key, g => g.Select(s => s.Subdomain).OrderBy(x => x).ToList());
+
+        _rows = users.Select(u => new Row
+        {
+            User = u,
+            IsAdmin = adminIds.Contains(u.Id),
+            ActiveSubdomains = liveByOwner.TryGetValue(u.Id, out var subs) ? subs : [],
+        }).ToList();
+    }
+
+    private async Task SetBlockedAsync(string userId, bool blocked)
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByIdAsync(userId);
+        if (user is null) return;
+
+        user.IsBlocked = blocked;
+        user.BlockedAt = blocked ? DateTimeOffset.UtcNow : null;
+        await userManager.UpdateAsync(user);
+        // Invalidate existing cookies/circuits so the change takes effect immediately.
+        await userManager.UpdateSecurityStampAsync(user);
+
+        if (blocked)
+            await Manager.CloseForOwnerAsync(userId, "User blocked by administrator.");
+
+        await LoadAsync();
+    }
+}
