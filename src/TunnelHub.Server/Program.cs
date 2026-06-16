@@ -15,14 +15,13 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<TunnelHubOptions>(builder.Configuration.GetSection(TunnelHubOptions.SectionName));
 
-// --- TLS / Let's Encrypt (per-subdomain certs via HTTP-01) ---
+// --- TLS / Let's Encrypt (one wildcard cert via DNS-01 serves all subdomains) ---
 var tlsEnabled = builder.Configuration.GetValue("Tls:Enabled", false);
 var sniSelector = new SniCertificateSelector();
 builder.Services.AddSingleton(sniSelector);
 builder.Services.AddSingleton<SettingsService>();
-builder.Services.AddSingleton<AcmeChallengeStore>();
 builder.Services.AddSingleton<CertificateStore>();
-builder.Services.AddSingleton<AcmeService>();
+builder.Services.AddSingleton<WildcardCertificateService>();
 
 if (tlsEnabled)
 {
@@ -30,14 +29,12 @@ if (tlsEnabled)
     var httpsPort = builder.Configuration.GetValue("Tls:HttpsPort", 443);
     builder.WebHost.ConfigureKestrel(k =>
     {
-        k.ListenAnyIP(httpPort); // HTTP-01 challenges + redirect
+        k.ListenAnyIP(httpPort); // plain HTTP (tunnels) + redirect for the app host
         k.ListenAnyIP(httpsPort, lo => lo.UseHttps(https =>
         {
             https.ServerCertificateSelector = (_, host) => sniSelector.Select(host);
         }));
     });
-    // Keep managed-host (app/root domain) certs provisioned and renewed.
-    builder.Services.AddHostedService<CertificateRenewalService>();
 }
 
 // --- Data ---
@@ -84,19 +81,32 @@ var app = builder.Build();
 
 await DbInitializer.InitializeAsync(app.Services);
 
-// Bring up the certificate cache and wire the SNI selector to its services.
+// Load cached certificates and wire the SNI selector to the store.
 var certStore = app.Services.GetRequiredService<CertificateStore>();
 await certStore.LoadAsync();
-sniSelector.Attach(certStore, app.Services.GetRequiredService<AcmeService>(),
-    app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<SniCertificateSelector>());
+sniSelector.Attach(certStore, app.Services.GetRequiredService<ILoggerFactory>().CreateLogger<SniCertificateSelector>());
 
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
 }
 
-// ACME HTTP-01 challenge responses must be served before ingress forwarding.
-app.UseMiddleware<AcmeChallengeMiddleware>();
+// Redirect plain HTTP on the app host to HTTPS (tunnel subdomains stay HTTP).
+if (tlsEnabled)
+{
+    var appHost = builder.Configuration[$"{TunnelHubOptions.SectionName}:AppHost"];
+    app.Use(async (ctx, next) =>
+    {
+        if (!ctx.Request.IsHttps
+            && !string.IsNullOrEmpty(appHost)
+            && string.Equals(ctx.Request.Host.Host, appHost, StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Response.Redirect($"https://{appHost}{ctx.Request.Path}{ctx.Request.QueryString}", permanent: false);
+            return;
+        }
+        await next();
+    });
+}
 
 // Ingress must run before everything else: it short-circuits *.tun hosts.
 app.UseMiddleware<IngressMiddleware>();

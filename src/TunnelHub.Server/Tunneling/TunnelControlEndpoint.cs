@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Options;
 using TunnelHub.Server.Configuration;
 using TunnelHub.Server.Services;
-using TunnelHub.Server.Tls;
 using TunnelHub.Shared.Protocol;
 
 namespace TunnelHub.Server.Tunneling;
@@ -13,7 +12,6 @@ namespace TunnelHub.Server.Tunneling;
 public sealed class TunnelControlEndpoint(
     TunnelManager manager,
     SubdomainAllocator allocator,
-    AcmeService acme,
     IOptions<TunnelHubOptions> options,
     ILogger<TunnelControlEndpoint> logger)
 {
@@ -86,9 +84,7 @@ public sealed class TunnelControlEndpoint(
         }
 
         var fullHost = $"{subdomain}.{_opts.BaseDomain}";
-
-        // Kick off TLS certificate issuance for this host now (SSL offload at the server).
-        acme.EnsureInBackground(fullHost);
+        // TLS is served by one wildcard cert for *.BaseDomain — no per-tunnel issuance needed.
 
         await channel.SendJsonAsync(FrameType.AuthOk, 0, new AuthOk
         {

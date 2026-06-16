@@ -4,40 +4,34 @@ using System.Security.Cryptography.X509Certificates;
 namespace TunnelHub.Server.Tls;
 
 /// <summary>
-/// Chooses the TLS certificate per SNI host name. Returns a cached Let's Encrypt
-/// cert when available; otherwise returns a self-signed fallback and triggers
-/// background issuance so the next handshake succeeds with a real cert.
-/// Constructed before the DI container is built (Kestrel needs it early), then
-/// <see cref="Attach"/>ed to its services afterwards.
+/// Chooses the TLS certificate per SNI host name from the <see cref="CertificateStore"/>
+/// (a wildcard cert covers every tunnel subdomain). Falls back to a self-signed
+/// cert when nothing matches, so handshakes never hard-fail. Constructed before
+/// the DI container is built (Kestrel needs it early), then <see cref="Attach"/>ed.
 /// </summary>
 public sealed class SniCertificateSelector
 {
     private readonly X509Certificate2 _fallback;
     private CertificateStore? _store;
-    private AcmeService? _acme;
     private ILogger? _logger;
 
     public SniCertificateSelector() => _fallback = CreateSelfSigned("tunnelhub.local");
 
-    public void Attach(CertificateStore store, AcmeService acme, ILogger logger)
+    public void Attach(CertificateStore store, ILogger logger)
     {
         _store = store;
-        _acme = acme;
         _logger = logger;
     }
 
     public X509Certificate2 Select(string? hostName)
     {
-        if (string.IsNullOrEmpty(hostName) || _store is null)
-            return _fallback;
-
-        var cert = _store.Get(hostName);
-        if (cert is not null)
-            return cert;
-
-        // No cert yet — serve fallback now, fetch a real one for next time.
-        _acme?.EnsureInBackground(hostName);
-        _logger?.LogDebug("No cert for {Host} yet; serving fallback", hostName);
+        if (!string.IsNullOrEmpty(hostName) && _store is not null)
+        {
+            var cert = _store.Match(hostName);
+            if (cert is not null)
+                return cert;
+            _logger?.LogDebug("No matching cert for {Host}; serving self-signed fallback", hostName);
+        }
         return _fallback;
     }
 

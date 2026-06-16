@@ -2,172 +2,260 @@
 @rendermode InteractiveServer
 @attribute [Authorize(Roles = "Admin")]
 @inject SettingsService SettingsSvc
+@inject WildcardCertificateService Wizard
+@inject CertificateStore Certs
 @inject IOptions<TunnelHubOptions> Options
-@inject AcmeService Acme
+@inject IConfiguration Config
 
-<PageTitle>Settings · Admin</PageTitle>
+<PageTitle>HTTPS · Admin</PageTitle>
 
-<h1>TLS / Let's Encrypt settings</h1>
+<h1>HTTPS (wildcard certificate)</h1>
 <p>
-    TunnelHub terminates HTTPS at the server and forwards plain HTTP to your tunneled
-    service (SSL offload). A certificate is requested per subdomain when a tunnel starts.
+    TunnelHub uses a single <strong>wildcard certificate</strong> from Let's Encrypt to
+    serve HTTPS for every tunnel subdomain. Wildcards are validated with a
+    <strong>DNS-01</strong> challenge — you add a TXT record at your DNS provider, which
+    this wizard walks you through.
 </p>
 
-<div class="alert alert-warning">
-    <strong>Heads up — rate limits.</strong> Let's Encrypt allows ~50 certificates per
-    registered domain per week. Because subdomains are random and short-lived, keep
-    <em>Use staging</em> on while testing, and consider a free wildcard certificate
-    (DNS-01) for high volume — see the README.
-</div>
-
-@if (_saved)
+@if (!_listenerOn)
 {
-    <div class="alert alert-success">Settings saved.</div>
+    <div class="alert alert-warning">
+        The HTTPS listener is <strong>off</strong> (<code>Tls:Enabled</code> is false), so port 443
+        isn't bound. You can still issue a certificate now, but set <code>Tls:Enabled=true</code>
+        and restart the service for it to be served.
+    </div>
 }
 
-<div class="card" style="max-width: 560px;">
-    <div class="card-body">
-        <div class="form-check form-switch mb-3">
-            <input class="form-check-input" type="checkbox" id="enabled" @bind="_model.AcmeEnabled" />
-            <label class="form-check-label" for="enabled">Enable automatic Let's Encrypt certificates</label>
-        </div>
-
-        <div class="mb-3">
-            <label class="form-label" for="email">Contact email</label>
-            <input class="form-control" id="email" type="email" @bind="_model.AcmeEmail"
-                   placeholder="you@example.com" />
-            <div class="form-text">Used to register the ACME account and receive expiry notices.</div>
-        </div>
-
-        <div class="form-check mb-3">
-            <input class="form-check-input" type="checkbox" id="tos" @bind="_model.AcmeAgreeTos" />
-            <label class="form-check-label" for="tos">
-                I agree to the
-                <a href="https://letsencrypt.org/repository/" target="_blank">Let's Encrypt Terms of Service</a>
-            </label>
-        </div>
-
-        <div class="form-check form-switch mb-3">
-            <input class="form-check-input" type="checkbox" id="staging" @bind="_model.UseStaging" />
-            <label class="form-check-label" for="staging">
-                Use staging environment (recommended while testing)
-            </label>
-        </div>
-
-        <hr />
-        <h5>Root / app domain HTTPS</h5>
-        <div class="mb-3">
-            <label class="form-label" for="managed">Hostnames to keep secured (one per line)</label>
-            <textarea class="form-control" id="managed" rows="3" @bind="_model.ManagedHostnames"
-                      placeholder="example.com&#10;www.example.com"></textarea>
-            <div class="form-text">
-                Long-lived hosts (your root/apex domain, etc.) that get a certificate and are
-                auto-renewed. The app host <code>@AppHost</code> is managed automatically.
-                These are served on 443 alongside tunnel subdomains.
-            </div>
-        </div>
-
-        <div class="mb-3" style="max-width: 220px;">
-            <label class="form-label" for="renew">Renew before expiry (days)</label>
-            <input class="form-control" id="renew" type="number" min="1" max="89" @bind="_model.RenewWithinDays" />
-        </div>
-
-        @if (!string.IsNullOrEmpty(_error))
+<h5>Current certificate</h5>
+@if (_current.Count == 0)
+{
+    <p class="text-muted">No certificate issued yet.</p>
+}
+else
+{
+    <ul>
+        @foreach (var c in _current)
         {
-            <div class="alert alert-danger">@_error</div>
+            <li>
+                <code>@string.Join(", ", c.Names)</code> — expires <strong>@c.NotAfter.LocalDateTime.ToString("d")</strong>
+                (@DaysLeft(c.NotAfter) days left)
+            </li>
         }
-        @if (_outcomes is not null)
-        {
-            <div class="alert @(_outcomes.Any(o => o.Status == "failed") ? "alert-warning" : "alert-info")">
-                <strong>Certificate pass results:</strong>
-                <ul class="mb-0">
-                    @foreach (var o in _outcomes)
-                    {
-                        <li>
-                            <code>@o.Host</code> — <strong>@o.Status</strong>
-                            @if (!string.IsNullOrEmpty(o.Detail)) { <text>: @o.Detail</text> }
-                        </li>
-                    }
-                </ul>
-            </div>
-        }
+    </ul>
+}
 
-        <button class="btn btn-primary" @onclick="SaveAsync">Save settings</button>
-        <button class="btn btn-outline-secondary ms-2" @onclick="ProvisionNowAsync" disabled="@_working">
-            @(_working ? "Working…" : "Provision / renew now")
-        </button>
+<hr />
+
+@if (_step == Step.Config)
+{
+    <h5>1. Account &amp; domains</h5>
+    <div class="card" style="max-width: 620px;">
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label" for="email">Contact email</label>
+                <input class="form-control" id="email" type="email" @bind="_email" placeholder="you@example.com" />
+            </div>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="tos" @bind="_tos" />
+                <label class="form-check-label" for="tos">
+                    I agree to the
+                    <a href="https://letsencrypt.org/repository/" target="_blank">Let's Encrypt Terms of Service</a>
+                </label>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="staging" @bind="_staging" />
+                <label class="form-check-label" for="staging">Use staging (recommended for a first dry run)</label>
+            </div>
+            <div class="mb-3">
+                <label class="form-label" for="domains">Domains for the certificate (one per line)</label>
+                <textarea class="form-control" id="domains" rows="3" @bind="_domains"></textarea>
+                <div class="form-text">
+                    The wildcard <code>*.@BaseDomain</code> covers all tunnel subdomains. Include the bare
+                    <code>@BaseDomain</code> too. Add other names (e.g. your app host) if you want them on the same cert.
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-danger">@_error</div> }
+
+            <button class="btn btn-primary" @onclick="StartAsync" disabled="@_busy">
+                @(_busy ? "Contacting Let's Encrypt…" : "Start — get DNS records")
+            </button>
+        </div>
     </div>
-</div>
+}
+else if (_step == Step.Dns)
+{
+    <h5>2. Add these DNS records</h5>
+    <p>Create the following <strong>TXT</strong> record(s) at your DNS provider, then verify below.
+       Multiple values for the same name are normal — add them all.</p>
 
-<p class="mt-3 text-muted">
-    Base domain: <code>*.@Options.Value.BaseDomain</code>. Ensure ports 80 and 443 reach this
-    server and <code>Tls:Enabled</code> is set, so HTTP-01 validation and HTTPS work.
+    <table class="table" style="max-width: 820px;">
+        <thead><tr><th>Type</th><th>Name / Host</th><th>Value</th></tr></thead>
+        <tbody>
+            @foreach (var r in _records)
+            {
+                <tr>
+                    <td>@r.Type</td>
+                    <td><code>@r.Name</code></td>
+                    <td><code style="word-break:break-all;">@r.Value</code></td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <div class="alert alert-info">
+        DNS changes can take a few minutes to propagate. You can check with:
+        <code>dig TXT @(_records.FirstOrDefault()?.Name) +short</code> (or <code>nslookup -type=TXT …</code>).
+        Verifying too early just fails — wait and retry.
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-danger">@_error</div> }
+
+    <button class="btn btn-primary" @onclick="VerifyAsync" disabled="@_busy">
+        @(_busy ? "Verifying with Let's Encrypt…" : "I've added the records — Verify & issue")
+    </button>
+    <button class="btn btn-outline-secondary ms-2" @onclick="CancelWizard" disabled="@_busy">Cancel</button>
+}
+else if (_step == Step.Done)
+{
+    <div class="alert alert-success">
+        <strong>Certificate issued</strong> for <code>@string.Join(", ", _issuedDomains)</code>,
+        valid until <strong>@(_issuedExpiry?.LocalDateTime.ToString("f"))</strong>.
+        @if (!_listenerOn)
+        {
+            <text> Set <code>Tls:Enabled=true</code> and restart to serve it on 443.</text>
+        }
+        else
+        {
+            <text> It is now served on 443 for all <code>*.@BaseDomain</code> hosts.</text>
+        }
+    </div>
+    <button class="btn btn-outline-primary" @onclick="Reset">Issue another / renew</button>
+}
+
+<hr />
+<p class="text-muted small">
+    <strong>Renewal:</strong> Let's Encrypt certs last ~90 days. Because this uses manual DNS,
+    re-run this wizard before expiry (the TXT values change each time). Staging certs are
+    untrusted by browsers — switch staging off for the real certificate.
 </p>
 
 @code {
-    private AdminSettings _model = new();
-    private bool _saved;
-    private bool _working;
+    private enum Step { Config, Dns, Done }
+
+    private Step _step = Step.Config;
+    private bool _busy;
     private string? _error;
-    private IReadOnlyList<AcmeService.CertOutcome>? _outcomes;
-    private string AppHost => Options.Value.AppHost;
+
+    private string? _email;
+    private bool _tos;
+    private bool _staging = true;
+    private string _domains = "";
+
+    private IReadOnlyList<WildcardCertificateService.DnsRecord> _records = [];
+    private IReadOnlyList<string> _issuedDomains = [];
+    private DateTimeOffset? _issuedExpiry;
+    private IReadOnlyList<(string[] Names, DateTimeOffset NotAfter)> _current = [];
+    private bool _listenerOn;
+
+    private string BaseDomain => Options.Value.BaseDomain;
 
     protected override async Task OnInitializedAsync()
     {
-        var current = await SettingsSvc.GetAsync();
-        _model = new AdminSettings
+        _listenerOn = Config.GetValue("Tls:Enabled", false);
+        _current = Certs.Current();
+
+        var cfg = await SettingsSvc.GetAsync();
+        _email = cfg.AcmeEmail;
+        _tos = cfg.AcmeAgreeTos;
+        _staging = cfg.UseStaging;
+        _domains = string.IsNullOrWhiteSpace(cfg.ManagedHostnames)
+            ? $"*.{BaseDomain}\n{BaseDomain}"
+            : cfg.ManagedHostnames!;
+
+        // If a wizard was already in progress (same circuit/session), resume on the DNS step.
+        if (Wizard.HasPending && Wizard.CurrentRecords is not null)
         {
-            AcmeEnabled = current.AcmeEnabled,
-            AcmeEmail = current.AcmeEmail,
-            AcmeAgreeTos = current.AcmeAgreeTos,
-            UseStaging = current.UseStaging,
-            ManagedHostnames = current.ManagedHostnames,
-            RenewWithinDays = current.RenewWithinDays,
-        };
+            _records = Wizard.CurrentRecords;
+            _step = Step.Dns;
+        }
     }
 
-    private async Task SaveAsync()
+    private string[] ParseDomains() =>
+        _domains.Split(['\n', '\r', ',', ' '], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(d => d.ToLowerInvariant()).Distinct().ToArray();
+
+    private async Task StartAsync()
     {
-        _saved = false;
         _error = null;
-        if (_model.AcmeEnabled && (!_model.AcmeAgreeTos || string.IsNullOrWhiteSpace(_model.AcmeEmail)))
+        if (string.IsNullOrWhiteSpace(_email) || !_tos)
         {
-            _error = "To enable certificates you must provide an email and agree to the Terms of Service.";
+            _error = "Enter a contact email and agree to the Terms of Service.";
+            return;
+        }
+        var domains = ParseDomains();
+        if (domains.Length == 0)
+        {
+            _error = "Enter at least one domain.";
             return;
         }
 
-        await SettingsSvc.UpdateAsync(s =>
-        {
-            s.AcmeEnabled = _model.AcmeEnabled;
-            s.AcmeEmail = _model.AcmeEmail?.Trim();
-            s.AcmeAgreeTos = _model.AcmeAgreeTos;
-            s.UseStaging = _model.UseStaging;
-            s.ManagedHostnames = string.IsNullOrWhiteSpace(_model.ManagedHostnames) ? null : _model.ManagedHostnames.Trim();
-            s.RenewWithinDays = Math.Clamp(_model.RenewWithinDays, 1, 89);
-        });
-        _saved = true;
-    }
-
-    private async Task ProvisionNowAsync()
-    {
-        _error = null;
-        _outcomes = null;
-        await SaveAsync();
-        if (_error is not null)
-            return;
-
-        _working = true;
+        _busy = true;
         try
         {
-            _outcomes = await Acme.EnsureManagedAndRenewAsync();
+            await SettingsSvc.UpdateAsync(s =>
+            {
+                s.AcmeEmail = _email!.Trim();
+                s.AcmeAgreeTos = _tos;
+                s.UseStaging = _staging;
+                s.ManagedHostnames = _domains.Trim();
+            });
+
+            var result = await Wizard.BeginAsync(domains);
+            if (!result.Ok)
+            {
+                _error = result.Error;
+                return;
+            }
+            _records = result.Records;
+            _step = Step.Dns;
         }
-        catch (Exception ex)
-        {
-            _error = $"Provisioning failed: {ex.Message}";
-        }
-        finally
-        {
-            _working = false;
-        }
+        finally { _busy = false; }
     }
+
+    private async Task VerifyAsync()
+    {
+        _error = null;
+        _busy = true;
+        try
+        {
+            var result = await Wizard.CompleteAsync();
+            if (!result.Ok)
+            {
+                _error = result.Error;
+                return;
+            }
+            _issuedDomains = result.Domains;
+            _issuedExpiry = result.NotAfter;
+            _current = Certs.Current();
+            _step = Step.Done;
+        }
+        finally { _busy = false; }
+    }
+
+    private void CancelWizard()
+    {
+        Wizard.Cancel();
+        _step = Step.Config;
+        _error = null;
+    }
+
+    private void Reset()
+    {
+        _step = Step.Config;
+        _error = null;
+    }
+
+    private static int DaysLeft(DateTimeOffset notAfter) =>
+        Math.Max(0, (int)(notAfter - DateTimeOffset.UtcNow).TotalDays);
 }

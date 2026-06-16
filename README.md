@@ -66,50 +66,42 @@ Configure the domains in `appsettings.json`:
 }
 ```
 
-## HTTPS / Let's Encrypt
+## HTTPS / Let's Encrypt (wildcard via DNS-01)
 
-TLS is handled with the **Certes** ACME client. When a tunnel registers, the
-server requests a certificate for that exact subdomain via the **HTTP-01**
-challenge (no DNS API needed — all `*.tun` traffic already reaches the server).
-SSL terminates at the server; your local service only ever sees plain HTTP.
+TLS uses a single **wildcard certificate** (`*.tun.example.com`) from Let's
+Encrypt, obtained with the **Certes** ACME client. One cert covers every random
+tunnel subdomain — no per-subdomain issuance and no rate-limit worries. SSL
+terminates at the server; your local service only ever sees plain HTTP.
 
-Enable it:
+Wildcards must be validated with a **DNS-01** challenge (a TXT record). The admin
+UI provides a wizard so you don't need a DNS API token — you add the record by
+hand.
 
-1. Set `"Tls": { "Enabled": true }` so Kestrel listens on **80** (challenges)
-   and **443** (HTTPS with per-host SNI certs). Ports 80 and 443 must be
-   reachable from the internet. (`install.sh` does this with `TUNNELHUB_TLS=true`.)
-2. Sign in as admin → **Settings** → enter a contact email, tick *agree to the
-   Terms of Service*, and (recommended while testing) keep **Use staging** on.
+Enable + issue:
 
-### Root / app domain HTTPS + auto-renewal
+1. Set `"Tls": { "Enabled": true }` so Kestrel listens on **443** (and **80** for
+   the app-host HTTP→HTTPS redirect). Port 443 must be reachable. (`install.sh`
+   does this with `TUNNELHUB_TLS=true`.)
+2. Sign in as admin → **Settings (HTTPS)** and run the wizard:
+   - Enter a contact email, agree to the Terms of Service, pick staging/production.
+   - Domains default to `*.tun.example.com` and `tun.example.com` (add your app
+     host if you want it on the same cert).
+   - Click **Start** → the wizard shows the **TXT record(s)** to create at your
+     DNS provider (name `_acme-challenge.tun.example.com`).
+   - Add them, wait for propagation (`dig TXT _acme-challenge.tun.example.com +short`),
+     then click **Verify & issue**.
+3. The wildcard cert is stored and served on 443 for all `*.tun.example.com` hosts.
 
-Tunnel subdomains get a cert on demand at registration. **Long-lived hosts**
-(your management/app host and root/apex domain) are handled separately:
+### Renewal
 
-- The configured **app host is always managed automatically**. Add any other
-  hostnames (e.g. your apex domain) under **Settings → Hostnames to keep
-  secured**. All of these are served on **443** via SNI alongside tunnel
-  subdomains.
-- A background **renewal service** (`CertificateRenewalService`) provisions
-  missing managed certs at startup and renews them before expiry (default 30
-  days, configurable), and prunes expired certs. Tunnel-subdomain certs are
-  short-lived and never need renewal.
-- The **Provision / renew now** button on the Settings page forces an immediate
-  pass (useful right after pointing DNS at the server).
+Let's Encrypt certs last ~90 days. Because validation is manual DNS, **re-run the
+wizard before expiry** (the TXT values change each time). The Settings page shows
+the current cert and days remaining. Hands-off renewal would require a DNS-API
+plugin — a possible future enhancement.
 
-### ⚠️ Rate limits — important
-
-Let's Encrypt allows **~50 certificates per registered domain per week**.
-Because subdomains are random and short-lived, **per-subdomain issuance can
-exhaust this quickly** under load. Options:
-
-- Keep **staging** on for testing (much higher limits, untrusted certs).
-- For production at volume, use a **free wildcard certificate** for
-  `*.tun.example.com`. Let's Encrypt wildcards are free but require a **DNS-01**
-  challenge (a `_acme-challenge` TXT record), which means giving an ACME client
-  DNS API access — or renewing manually every ~60 days. A wildcard covers every
-  subdomain with a single cert and no per-tunnel issuance. (Wiring a DNS-01
-  provider is a future enhancement; the per-subdomain path ships today.)
+> Tip: do a first run with **staging** on to confirm the DNS flow works (staging
+> certs are untrusted by browsers), then switch staging off and re-run for the
+> real certificate.
 
 ## Running locally (no real DNS or TLS)
 
