@@ -27,6 +27,14 @@ public sealed class IngressMiddleware(
         "TE", "Trailer", "Transfer-Encoding", "Upgrade",
     };
 
+    // Response headers a tunneled app must never set on the shared wildcard domain.
+    // HSTS in particular (with includeSubDomains) would pin *.BaseDomain in the
+    // visitor's browser and break every other tunnel on the domain.
+    private static readonly HashSet<string> StripFromResponse = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "Strict-Transport-Security",
+    };
+
     public async Task InvokeAsync(HttpContext context)
     {
         var host = context.Request.Host.Host;
@@ -117,6 +125,7 @@ public sealed class IngressMiddleware(
             foreach (var header in responseHead.Headers)
             {
                 if (HopByHop.Contains(header.Name) ||
+                    StripFromResponse.Contains(header.Name) ||
                     string.Equals(header.Name, "Content-Length", StringComparison.OrdinalIgnoreCase))
                     continue;
                 context.Response.Headers.Append(header.Name, header.Value);
