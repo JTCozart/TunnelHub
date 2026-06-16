@@ -2,7 +2,7 @@
 # the GitHub Actions release workflow produces, so you can deploy without CI.
 #
 #   pwsh deploy/build-release.ps1
-#   pwsh deploy/build-release.ps1 -Version v1.2.3 -Repo JTCozart/TunnelHub
+#   pwsh deploy/build-release.ps1 -Version v1.2.3 -Repo JTCozart/ZTPR
 #
 # Output:
 #   out/ztpr/                  the published server + clients + installer scripts

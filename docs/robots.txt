@@ -6,4 +6,4 @@ Disallow: /*.svg$
 Disallow: /_config.yml
 
 # Sitemap
-Sitemap: https://jtcozart.github.io/ztpr/sitemap.xml
+Sitemap: https://ztpr.app/sitemap.xml

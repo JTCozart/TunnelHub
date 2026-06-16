@@ -3,7 +3,7 @@
 
   <!-- Homepage -->
   <url>
-    <loc>https://jtcozart.github.io/ztpr/</loc>
+    <loc>https://ztpr.app/</loc>
     <lastmod>2026-06-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>1.0</priority>
@@ -11,7 +11,7 @@
 
   <!-- Getting Started -->
   <url>
-    <loc>https://jtcozart.github.io/ztpr/getting-started.html</loc>
+    <loc>https://ztpr.app/getting-started.html</loc>
     <lastmod>2026-06-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
@@ -19,7 +19,7 @@
 
   <!-- Docs -->
   <url>
-    <loc>https://jtcozart.github.io/ztpr/user-guide.html</loc>
+    <loc>https://ztpr.app/user-guide.html</loc>
     <lastmod>2026-06-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.9</priority>
@@ -27,25 +27,25 @@
 
   <!-- Docs sections (anchor deep-links for rich search snippets) -->
   <url>
-    <loc>https://jtcozart.github.io/ztpr/user-guide.html#self-hosting</loc>
+    <loc>https://ztpr.app/user-guide.html#self-hosting</loc>
     <lastmod>2026-06-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://jtcozart.github.io/ztpr/user-guide.html#https-tls</loc>
+    <loc>https://ztpr.app/user-guide.html#https-tls</loc>
     <lastmod>2026-06-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://jtcozart.github.io/ztpr/user-guide.html#configuration</loc>
+    <loc>https://ztpr.app/user-guide.html#configuration</loc>
     <lastmod>2026-06-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://jtcozart.github.io/ztpr/user-guide.html#cli</loc>
+    <loc>https://ztpr.app/user-guide.html#cli</loc>
     <lastmod>2026-06-16</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
