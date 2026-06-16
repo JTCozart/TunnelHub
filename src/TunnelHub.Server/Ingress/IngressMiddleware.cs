@@ -84,15 +84,26 @@ public sealed class IngressMiddleware(
     private async Task ForwardAsync(HttpContext context, TunnelSession session, string subdomain)
     {
         var req = context.Request;
+        var publicHost = req.Host.Value;
+        var headers = req.Headers
+            .Where(h => !HopByHop.Contains(h.Key) && !h.Key.StartsWith("X-Forwarded-", StringComparison.OrdinalIgnoreCase))
+            .SelectMany(h => h.Value.Select(v => new HeaderPair(h.Key, v ?? "")))
+            .ToList();
+
+        // Tell the local app the original scheme/host/client so it builds correct
+        // absolute URLs and doesn't redirect to localhost.
+        headers.Add(new HeaderPair("X-Forwarded-Proto", req.Scheme));
+        headers.Add(new HeaderPair("X-Forwarded-Host", publicHost));
+        var clientIp = context.Connection.RemoteIpAddress?.ToString();
+        if (clientIp is not null)
+            headers.Add(new HeaderPair("X-Forwarded-For", clientIp));
+
         var head = new RequestStart
         {
             Method = req.Method,
             PathAndQuery = req.Path + req.QueryString,
             HasBody = req.ContentLength is > 0 || req.Headers.ContainsKey("Transfer-Encoding"),
-            Headers = req.Headers
-                .Where(h => !HopByHop.Contains(h.Key))
-                .SelectMany(h => h.Value.Select(v => new HeaderPair(h.Key, v ?? "")))
-                .ToList(),
+            Headers = headers,
         };
 
         PendingRequest pending;

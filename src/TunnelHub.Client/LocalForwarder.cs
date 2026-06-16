@@ -69,6 +69,13 @@ public sealed class LocalForwarder(Uri target, FrameChannel channel)
 
         foreach (var header in head.Headers)
         {
+            if (string.Equals(header.Name, "Host", StringComparison.OrdinalIgnoreCase))
+            {
+                // Forward the public tunnel host so the local app builds correct
+                // absolute URLs / redirects instead of pointing back at localhost.
+                request.Headers.Host = header.Value;
+                continue;
+            }
             if (SkipRequestHeaders.Contains(header.Name))
                 continue;
             if (request.Headers.TryAddWithoutValidation(header.Name, header.Value))
