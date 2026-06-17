@@ -6,9 +6,25 @@
 <div class="auth-card">
     <h1>Sign in</h1>
 
+    @if (!string.IsNullOrEmpty(Info))
+    {
+        <div class="alert alert-success" role="alert">@Info</div>
+    }
     @if (!string.IsNullOrEmpty(Error))
     {
         <div class="alert alert-danger" role="alert">@Error</div>
+    }
+
+    @if (Unconfirmed)
+    {
+        <form method="post" action="/account/resend-confirmation" class="mb-3">
+            <AntiforgeryToken />
+            <div class="input-group">
+                <input class="form-control" name="email" type="email" placeholder="you@example.com"
+                       autocomplete="username" required />
+                <button class="btn btn-outline-secondary" type="submit">Resend confirmation</button>
+            </div>
+        </form>
     }
 
     <form method="post" action="/account/login">
@@ -25,12 +41,17 @@
         <button class="btn btn-primary w-100" type="submit">Sign in</button>
     </form>
 
-    <p class="mt-3 text-center">
+    <p class="mt-3 mb-1 text-center">
+        <a href="/forgot-password">Forgot your password?</a>
+    </p>
+    <p class="text-center">
         No account? <a href="/register">Register with an invite code</a>
     </p>
 </div>
 
 @code {
     [SupplyParameterFromQuery] private string? Error { get; set; }
+    [SupplyParameterFromQuery] private string? Info { get; set; }
+    [SupplyParameterFromQuery] private bool Unconfirmed { get; set; }
     [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
 }

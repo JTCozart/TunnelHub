@@ -3,6 +3,9 @@
 @attribute [Authorize]
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IServiceScopeFactory ScopeFactory
+@inject TunnelManager Manager
+@inject AuditLogService Audit
+@inject IJSRuntime JS
 
 <PageTitle>API keys · Ztpr</PageTitle>
 
@@ -33,6 +36,7 @@
 }
 else
 {
+    <div class="table-responsive">
     <table class="table">
         <thead>
             <tr><th>Label</th><th>Key</th><th>Created</th><th>Status</th><th></th></tr>
@@ -43,7 +47,7 @@ else
                 <tr>
                     <td>@k.Label</td>
                     <td><code>@k.DisplayPrefix</code></td>
-                    <td>@k.CreatedAt.LocalDateTime.ToString("g")</td>
+                    <td><LocalTime Value="@k.CreatedAt" /></td>
                     <td>
                         @if (k.IsActive)
                         {
@@ -54,16 +58,18 @@ else
                             <span class="badge bg-secondary">revoked</span>
                         }
                     </td>
-                    <td>
+                    <td class="text-nowrap">
                         @if (k.IsActive)
                         {
-                            <button class="btn btn-sm btn-outline-danger" @onclick="() => RevokeAsync(k.Id)">Revoke</button>
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => RevokeAsync(k.Id)" disabled="@_busy">Revoke</button>
                         }
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => DeleteAsync(k.Id, k.IsActive)" disabled="@_busy">Delete</button>
                     </td>
                 </tr>
             }
         </tbody>
     </table>
+    </div>
 }
 
 @code {
@@ -73,12 +79,14 @@ else
     private string _newLabel = "";
     private string? _justCreated;
     private string _userId = "";
+    private string? _userEmail;
     private bool _busy;
 
     protected override async Task OnInitializedAsync()
     {
         var state = await AuthState;
         _userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        _userEmail = state.User.FindFirstValue(ClaimTypes.Name);
         await LoadAsync();
     }
 
@@ -100,6 +108,8 @@ else
             var svc = scope.ServiceProvider.GetRequiredService<ApiKeyService>();
             var created = await svc.CreateAsync(_userId, _newLabel);
             _justCreated = created.RawKey;
+            await Audit.LogAsync(AuditEventType.ApiKeyCreated, _userId, _userEmail,
+                detail: $"label: {created.Record.Label} ({created.Record.DisplayPrefix})");
             _newLabel = "";
             await LoadAsync();
         }
@@ -112,5 +122,30 @@ else
         var svc = scope.ServiceProvider.GetRequiredService<ApiKeyService>();
         await svc.RevokeAsync(id, _userId);
         await LoadAsync();
+    }
+
+    // Permanently remove a key. Active keys back a live tunnel only momentarily, so warn
+    // accordingly. Cascade deletes the key's tunnel history; live sessions are closed first.
+    private async Task DeleteAsync(Guid id, bool active)
+    {
+        if (_busy) return;
+        var warning = active
+            ? "Delete this key permanently? Any tunnel using it will be disconnected, and its history will be removed."
+            : "Delete this key permanently? Its tunnel history will be removed.";
+        if (!await JS.InvokeAsync<bool>("confirm", warning))
+            return;
+
+        _busy = true;
+        try
+        {
+            await Manager.CloseForKeyAsync(id, "API key deleted.");
+            using var scope = ScopeFactory.CreateScope();
+            var svc = scope.ServiceProvider.GetRequiredService<ApiKeyService>();
+            var label = await svc.DeleteAsync(id, _userId);
+            if (label is not null)
+                await Audit.LogAsync(AuditEventType.ApiKeyDeleted, _userId, _userEmail, detail: $"label: {label}");
+            await LoadAsync();
+        }
+        finally { _busy = false; }
     }
 }

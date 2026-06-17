@@ -1,0 +1,185 @@
+@page "/admin/logs"
+@rendermode InteractiveServer
+@attribute [Authorize(Roles = "Admin")]
+@inject IDbContextFactory<AppDbContext> DbFactory
+
+<PageTitle>Audit log · Admin</PageTitle>
+
+<h1>Audit log</h1>
+<p>
+    Security events — sign-ins, tunnel starts, key/user/invite creation, and blocks — with the
+    associated user and IP where known. The log is capped at @SizeLabel; oldest entries are purged
+    automatically when that's exceeded.
+</p>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3 align-items-end">
+            <div class="col-sm-6 col-md-3">
+                <label class="form-label" for="type">Event type</label>
+                <select class="form-select" id="type" @bind="_type">
+                    <option value="">All events</option>
+                    @foreach (var t in Enum.GetValues<AuditEventType>())
+                    {
+                        <option value="@t">@Label(t)</option>
+                    }
+                </select>
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <label class="form-label" for="from">From</label>
+                <input class="form-control" id="from" type="date" @bind="_from" />
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <label class="form-label" for="to">To</label>
+                <input class="form-control" id="to" type="date" @bind="_to" />
+            </div>
+            <div class="col-sm-6 col-md-3">
+                <label class="form-label" for="limit">Show</label>
+                <select class="form-select" id="limit" @bind="_limit">
+                    <option value="100">100 newest</option>
+                    <option value="250">250 newest</option>
+                    <option value="500">500 newest</option>
+                    <option value="1000">1000 newest</option>
+                </select>
+            </div>
+            <div class="col-md-9">
+                <label class="form-label" for="q">Search (email, IP, or detail)</label>
+                <input class="form-control" id="q" @bind="_q" @bind:event="oninput"
+                       placeholder="e.g. user@example.com, 203.0.113.7, red-tiger" />
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-primary flex-grow-1" @onclick="ApplyAsync" disabled="@_busy">
+                    @(_busy ? "Loading…" : "Apply")
+                </button>
+                <button class="btn btn-outline-secondary" @onclick="ResetAsync" disabled="@_busy">Reset</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<p class="text-muted">@_rows.Count event(s) shown@(_truncated ? $" (capped at {_limit} — narrow the filters to see more)" : "").</p>
+
+@if (_rows.Count == 0)
+{
+    <p class="text-muted">No matching events.</p>
+}
+else
+{
+    <div class="table-responsive">
+        <table class="table table-sm align-middle">
+            <thead>
+                <tr><th>Time</th><th>Event</th><th>User</th><th>IP</th><th>Detail</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var e in _rows)
+                {
+                    <tr>
+                        <td class="text-nowrap"><LocalTime Value="@e.Timestamp" Mode="datetime-sec" /></td>
+                        <td><span class="badge @BadgeClass(e.EventType)">@Label(e.EventType)</span></td>
+                        <td>@(string.IsNullOrEmpty(e.UserEmail) ? "—" : e.UserEmail)</td>
+                        <td class="text-nowrap"><code>@(string.IsNullOrEmpty(e.IpAddress) ? "—" : e.IpAddress)</code></td>
+                        <td>@(string.IsNullOrEmpty(e.Detail) ? "" : e.Detail)</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private string _type = "";
+    private DateTime? _from;
+    private DateTime? _to;
+    private int _limit = 250;
+    private string _q = "";
+
+    private List<AuditEvent> _rows = [];
+    private bool _truncated;
+    private bool _busy;
+
+    private static string SizeLabel =>
+        $"{AuditLogService.MaxLogBytes / (1024 * 1024 * 1024)} GB";
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task ApplyAsync() => await LoadAsync();
+
+    private async Task ResetAsync()
+    {
+        _type = "";
+        _from = null;
+        _to = null;
+        _q = "";
+        _limit = 250;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _busy = true;
+        try
+        {
+            await using var db = await DbFactory.CreateDbContextAsync();
+            IQueryable<AuditEvent> query = db.AuditEvents;
+
+            if (Enum.TryParse<AuditEventType>(_type, out var type))
+                query = query.Where(e => e.EventType == type);
+
+            if (_from is { } from)
+            {
+                var fromMs = new DateTimeOffset(from.Date, TimeSpan.Zero).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.CreatedAtUnixMs >= fromMs);
+            }
+            if (_to is { } to)
+            {
+                // Inclusive of the whole "to" day.
+                var toMs = new DateTimeOffset(to.Date.AddDays(1), TimeSpan.Zero).ToUnixTimeMilliseconds();
+                query = query.Where(e => e.CreatedAtUnixMs < toMs);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_q))
+            {
+                var q = _q.Trim();
+                query = query.Where(e =>
+                    (e.UserEmail != null && EF.Functions.Like(e.UserEmail, $"%{q}%")) ||
+                    (e.IpAddress != null && EF.Functions.Like(e.IpAddress, $"%{q}%")) ||
+                    (e.Detail != null && EF.Functions.Like(e.Detail, $"%{q}%")));
+            }
+
+            // Fetch one extra to detect truncation. Order by the integer epoch column,
+            // which SQLite can sort server-side (DateTimeOffset cannot be translated).
+            var rows = await query.OrderByDescending(e => e.CreatedAtUnixMs).Take(_limit + 1).ToListAsync();
+            _truncated = rows.Count > _limit;
+            _rows = _truncated ? rows.Take(_limit).ToList() : rows;
+        }
+        finally { _busy = false; }
+    }
+
+    private static string Label(AuditEventType t) => t switch
+    {
+        AuditEventType.LoginSucceeded => "Login succeeded",
+        AuditEventType.LoginFailed => "Login failed",
+        AuditEventType.TunnelStarted => "Tunnel started",
+        AuditEventType.ApiKeyCreated => "API key created",
+        AuditEventType.UserCreated => "User created",
+        AuditEventType.InviteCreated => "Invite created",
+        AuditEventType.UserBlocked => "User blocked",
+        AuditEventType.UserUnblocked => "User unblocked",
+        AuditEventType.UserDeleted => "User deleted",
+        AuditEventType.ApiKeyDeleted => "API key deleted",
+        AuditEventType.InviteExpired => "Invite expired",
+        AuditEventType.EmailConfirmationSent => "Email confirmation sent",
+        AuditEventType.EmailConfirmed => "Email confirmed",
+        AuditEventType.PasswordResetRequested => "Password reset requested",
+        AuditEventType.PasswordResetCompleted => "Password reset completed",
+        _ => t.ToString(),
+    };
+
+    private static string BadgeClass(AuditEventType t) => t switch
+    {
+        AuditEventType.LoginFailed or AuditEventType.UserBlocked or AuditEventType.UserDeleted => "bg-danger",
+        AuditEventType.LoginSucceeded or AuditEventType.UserUnblocked => "bg-success",
+        AuditEventType.TunnelStarted => "bg-primary",
+        _ => "bg-secondary",
+    };
+}

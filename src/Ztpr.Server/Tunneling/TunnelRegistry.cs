@@ -38,4 +38,7 @@ public sealed class TunnelRegistry
 
     public IEnumerable<TunnelSession> ForOwner(string ownerId) =>
         _bySubdomain.Values.Where(s => s.OwnerId == ownerId);
+
+    public IEnumerable<TunnelSession> ForKey(Guid apiKeyId) =>
+        _bySubdomain.Values.Where(s => s.ApiKeyId == apiKeyId);
 }

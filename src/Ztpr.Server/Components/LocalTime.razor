@@ -1,0 +1,26 @@
+@* Renders a timestamp that client-side JS reformats into the viewer's local timezone
+   (see wwwroot/js/localtime.js). The server-rendered text is a fallback shown until the
+   script runs. Display-only — stored values stay UTC.
+   Mode: "date" | "time" | "datetime" (default) | "datetime-sec". *@
+@if (Value is { } v)
+{
+    <span data-utc="@v.UtcDateTime.ToString("o")" data-utc-mode="@Mode">@Fallback(v)</span>
+}
+else
+{
+    @NullText
+}
+
+@code {
+    [Parameter, EditorRequired] public DateTimeOffset? Value { get; set; }
+    [Parameter] public string Mode { get; set; } = "datetime";
+    [Parameter] public string NullText { get; set; } = "—";
+
+    private string Fallback(DateTimeOffset v) => Mode switch
+    {
+        "date" => v.LocalDateTime.ToString("d"),
+        "time" => v.LocalDateTime.ToString("T"),
+        "datetime-sec" => v.LocalDateTime.ToString("yyyy-MM-dd HH:mm:ss"),
+        _ => v.LocalDateTime.ToString("g"),
+    };
+}

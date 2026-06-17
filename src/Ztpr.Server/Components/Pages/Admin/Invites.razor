@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @attribute [Authorize(Roles = "Admin")]
 @inject IDbContextFactory<AppDbContext> DbFactory
+@inject AuditLogService Audit
 
 <PageTitle>Invite codes · Admin</PageTitle>
 
@@ -29,22 +30,32 @@
 }
 else
 {
+    <div class="table-responsive">
     <table class="table">
         <thead>
-            <tr><th>Code</th><th>Created</th><th>Expires</th><th>Status</th></tr>
+            <tr><th>Code</th><th>Created</th><th>Expires</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
             @foreach (var c in _codes)
             {
                 <tr>
                     <td><code>@c.Code</code></td>
-                    <td>@c.CreatedAt.LocalDateTime.ToString("g")</td>
-                    <td>@(c.ExpiresAt?.LocalDateTime.ToString("g") ?? "never")</td>
+                    <td><LocalTime Value="@c.CreatedAt" /></td>
+                    <td><LocalTime Value="@c.ExpiresAt" NullText="never" /></td>
                     <td>@StatusOf(c)</td>
+                    <td class="text-nowrap">
+                        @if (IsAvailable(c))
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => ExpireAsync(c.Id)" disabled="@_busy">
+                                Expire now
+                            </button>
+                        }
+                    </td>
                 </tr>
             }
         </tbody>
     </table>
+    </div>
 }
 
 @code {
@@ -52,6 +63,7 @@ else
 
     private List<InviteCode> _codes = [];
     private int? _expiryDays;
+    private bool _busy;
 
     protected override async Task OnInitializedAsync() => await LoadAsync();
 
@@ -67,15 +79,19 @@ else
     {
         var state = await AuthState;
         var userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var userEmail = state.User.FindFirstValue(ClaimTypes.Name);
 
+        var code = GenerateCode();
         await using var db = await DbFactory.CreateDbContextAsync();
         db.InviteCodes.Add(new InviteCode
         {
-            Code = GenerateCode(),
+            Code = code,
             CreatedByUserId = userId,
             ExpiresAt = _expiryDays is > 0 ? DateTimeOffset.UtcNow.AddDays(_expiryDays.Value) : null,
         });
         await db.SaveChangesAsync();
+        await Audit.LogAsync(AuditEventType.InviteCreated, userId, userEmail,
+            detail: _expiryDays is > 0 ? $"code {code}, expires in {_expiryDays}d" : $"code {code}, no expiry");
         await LoadAsync();
     }
 
@@ -83,6 +99,34 @@ else
         c.IsRedeemed ? "redeemed"
         : c.ExpiresAt is not null && c.ExpiresAt <= DateTimeOffset.UtcNow ? "expired"
         : "available";
+
+    // Only unredeemed, not-yet-expired codes can be force-expired.
+    private static bool IsAvailable(InviteCode c) =>
+        !c.IsRedeemed && (c.ExpiresAt is null || c.ExpiresAt > DateTimeOffset.UtcNow);
+
+    // Force-expire an outstanding code so it can no longer be redeemed.
+    private async Task ExpireAsync(Guid id)
+    {
+        if (_busy) return;
+        _busy = true;
+        try
+        {
+            var state = await AuthState;
+            var userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userEmail = state.User.FindFirstValue(ClaimTypes.Name);
+
+            await using var db = await DbFactory.CreateDbContextAsync();
+            var code = await db.InviteCodes.FirstOrDefaultAsync(c => c.Id == id);
+            if (code is null || !IsAvailable(code))
+                return;
+
+            code.ExpiresAt = DateTimeOffset.UtcNow;
+            await db.SaveChangesAsync();
+            await Audit.LogAsync(AuditEventType.InviteExpired, userId, userEmail, detail: $"code {code.Code}");
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
 
     private static string GenerateCode()
     {

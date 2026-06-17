@@ -26,7 +26,7 @@ else
                 <tr>
                     <td><a href="@Url(t)" target="_blank">@t.Subdomain.@Base</a></td>
                     <td>@(t.ClientLabel ?? t.ClientIp ?? "—")</td>
-                    <td>@t.StartedAt.LocalDateTime.ToString("T")</td>
+                    <td><LocalTime Value="@t.StartedAt" Mode="time" /></td>
                     <td><span class="badge text-bg-light border">@Ago(t.LastSeen)</span></td>
                     <td><span class="badge text-bg-secondary">@Remaining(t.ExpiresAt)</span></td>
                 </tr>

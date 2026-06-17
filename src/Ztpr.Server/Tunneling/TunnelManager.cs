@@ -74,6 +74,13 @@ public sealed class TunnelManager(TunnelRegistry registry, IServiceScopeFactory 
             await CloseAsync(session.Subdomain, reason);
     }
 
+    /// <summary>Force-close every live tunnel opened with a given API key (e.g. on key delete).</summary>
+    public async Task CloseForKeyAsync(Guid apiKeyId, string reason)
+    {
+        foreach (var session in registry.ForKey(apiKeyId).ToList())
+            await CloseAsync(session.Subdomain, reason);
+    }
+
     private async Task PersistClosedAsync(string subdomain, DateTimeOffset? lastSeen, string reason)
     {
         try

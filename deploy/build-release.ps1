@@ -96,7 +96,9 @@ if ($Repo) {
 $tarball = Join-Path $root "ztpr-linux-x64.tar.gz"
 if (Test-Path $tarball) { Remove-Item -Force $tarball }
 Write-Host "`nCreating $tarball…" -ForegroundColor Cyan
-tar -C $out -czf $tarball ztpr
+# --force-local: the bundled GNU tar on Windows treats the drive-letter colon in an
+# absolute path ("C:\…") as a remote host:path. This keeps it a local file path.
+tar --force-local -C $out -czf $tarball ztpr
 if ($LASTEXITCODE) { throw "tar failed." }
 
 $size = "{0:N1} MB" -f ((Get-Item $tarball).Length / 1MB)

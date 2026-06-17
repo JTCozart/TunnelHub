@@ -58,6 +58,22 @@ public sealed class ApiKeyService(AppDbContext db)
         await db.SaveChangesAsync(ct);
     }
 
+    /// <summary>
+    /// Permanently delete a key (and, by cascade, its tunnel history rows). Scoped to the
+    /// owner so a user can only delete their own keys. Live sessions for this key must be
+    /// closed by the caller first. Returns the deleted key's label/prefix for auditing, or null.
+    /// </summary>
+    public async Task<string?> DeleteAsync(Guid keyId, string ownerId, CancellationToken ct = default)
+    {
+        var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == keyId && k.OwnerId == ownerId, ct);
+        if (key is null)
+            return null;
+        var label = $"{key.Label} ({key.DisplayPrefix})";
+        db.ApiKeys.Remove(key);
+        await db.SaveChangesAsync(ct);
+        return label;
+    }
+
     public static string Hash(string raw)
     {
         var bytes = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw));

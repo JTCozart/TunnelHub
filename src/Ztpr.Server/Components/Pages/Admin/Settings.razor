@@ -3,6 +3,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @inject SettingsService SettingsSvc
 @inject SecretProtector Secrets
+@inject EmailSender Email
 @inject WildcardCertificateService Wizard
 @inject CertificateStore Certs
 @inject IJSRuntime JS
@@ -18,6 +19,9 @@
     </li>
     <li class="nav-item">
         <button type="button" class="nav-link @(_tab == Tab.Limits ? "active" : "")" @onclick="() => _tab = Tab.Limits">Tunnel limits</button>
+    </li>
+    <li class="nav-item">
+        <button type="button" class="nav-link @(_tab == Tab.Email ? "active" : "")" @onclick="() => _tab = Tab.Email">Email</button>
     </li>
     <li class="nav-item">
         <button type="button" class="nav-link @(_tab == Tab.Dns ? "active" : "")" @onclick="() => _tab = Tab.Dns">DNS &amp; Route 53</button>
@@ -102,6 +106,195 @@ else if (_tab == Tab.Limits)
         <button class="btn btn-primary" @onclick="SaveLimitsAsync" disabled="@_limitsBusy">
             @(_limitsBusy ? "Saving…" : "Save limits")
         </button>
+    </div>
+</div>
+}
+else if (_tab == Tab.Email)
+{
+<h4>Email (Mailjet)</h4>
+<p class="text-muted">
+    Connect your own <a href="https://www.mailjet.com/" target="_blank">Mailjet</a> account to send
+    transactional email. This enables <strong>email verification on registration</strong> and
+    <strong>password resets by email</strong>. The secret key is stored <strong>encrypted at rest</strong>.
+</p>
+
+<div class="card mb-3" style="max-width: 760px;">
+    <div class="card-body">
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="emailEnabled" @bind="_emailEnabled" />
+            <label class="form-check-label" for="emailEnabled">Enable email sending via Mailjet</label>
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="mjKey">Mailjet API key</label>
+            <input class="form-control" id="mjKey" @bind="_mjApiKey" placeholder="Public API key" autocomplete="off" />
+        </div>
+        <div class="mb-3">
+            <label class="form-label" for="mjSecret">Mailjet secret key</label>
+            <input class="form-control" id="mjSecret" type="password" @bind="_mjSecretInput"
+                   placeholder="@(_mjSecretConfigured ? "•••••••• (leave blank to keep current)" : "Paste the secret key")"
+                   autocomplete="off" />
+            <div class="form-text">
+                @(_mjSecretConfigured
+                    ? "A secret is stored. Leave this blank to keep it, or paste a new one to replace it."
+                    : "Stored encrypted — it is never shown again after you save.")
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label" for="fromEmail">From address</label>
+                <input class="form-control" id="fromEmail" type="email" @bind="_fromEmail" placeholder="noreply@example.com" />
+                <div class="form-text">Must be a verified sender in your Mailjet account.</div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label" for="fromName">From name</label>
+                <input class="form-control" id="fromName" @bind="_fromName" placeholder="Ztpr" />
+                <div class="form-text">Friendly name shown in recipients' inboxes.</div>
+            </div>
+        </div>
+        <div class="form-check form-switch mb-3">
+            <input class="form-check-input" type="checkbox" id="requireConfirm" @bind="_requireEmailConfirmation" />
+            <label class="form-check-label" for="requireConfirm">
+                Require new users to confirm their email before signing in
+            </label>
+            <div class="form-text">Only enforced while email is enabled and configured. The first user (admin) is exempt.</div>
+        </div>
+
+        <hr />
+        <p class="text-muted mb-2">
+            <strong>Plan limits</strong> — Mailjet's API doesn't expose your plan's quota, so set it here to
+            drive the usage bars below. The free tier is <strong>6,000 emails/month</strong>.
+        </p>
+        <div class="row">
+            <div class="col-md-6 mb-3">
+                <label class="form-label" for="mjMonthly">Monthly email limit</label>
+                <input class="form-control" id="mjMonthly" type="number" min="0" @bind="_mjMonthlyLimit" />
+                <div class="form-text"><code>0</code> hides the email usage bar.</div>
+            </div>
+            <div class="col-md-6 mb-3">
+                <label class="form-label" for="mjContacts">Contact limit</label>
+                <input class="form-control" id="mjContacts" type="number" min="0" @bind="_mjContactLimit" />
+                <div class="form-text"><code>0</code> = no cap (count shown without a bar).</div>
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_emailSaved)) { <div class="alert alert-success py-2">@_emailSaved</div> }
+        @if (!string.IsNullOrEmpty(_emailError)) { <div class="alert alert-danger py-2">@_emailError</div> }
+
+        <button class="btn btn-primary" @onclick="SaveEmailAsync" disabled="@_emailBusy">
+            @(_emailBusy ? "Saving…" : "Save email settings")
+        </button>
+    </div>
+</div>
+
+<div class="card mb-4" style="max-width: 760px;">
+    <div class="card-body">
+        <h5 class="card-title">Send a test email</h5>
+        <p class="text-muted">
+            Verify your credentials by sending a test message. This uses the values in the form above
+            (including an unsaved API key/secret), so you can validate before saving.
+        </p>
+        <div class="input-group" style="max-width: 480px;">
+            <input class="form-control" type="email" @bind="_testTo" placeholder="recipient@example.com" />
+            <button class="btn btn-outline-primary" @onclick="SendTestAsync" disabled="@_testBusy">
+                @(_testBusy ? "Sending…" : "Send test email")
+            </button>
+        </div>
+        @if (!string.IsNullOrEmpty(_testResult)) { <div class="alert alert-success py-2 mt-3 mb-0">@_testResult</div> }
+        @if (!string.IsNullOrEmpty(_testError)) { <div class="alert alert-danger py-2 mt-3 mb-0">@_testError</div> }
+    </div>
+</div>
+
+<div class="card mb-4" style="max-width: 760px;">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="card-title mb-0">Usage</h5>
+            <button class="btn btn-sm btn-outline-secondary" @onclick="RefreshUsageAsync" disabled="@_usageBusy">
+                @(_usageBusy ? "Refreshing…" : "Refresh")
+            </button>
+        </div>
+
+        @if (!_mjSecretConfigured && !EmailConfiguredSaved)
+        {
+            <p class="text-muted mb-0">Save your Mailjet credentials to see send and contact usage.</p>
+        }
+        else if (_usage is null)
+        {
+            <p class="text-muted mb-0">@(_usageBusy ? "Loading usage…" : "Click Refresh to load current usage.")</p>
+        }
+        else
+        {
+            <div class="mb-3">
+                <div class="d-flex justify-content-between small">
+                    <span>Emails sent this month</span>
+                    <span>
+                        @(_usage.SentThisMonth?.ToString("N0") ?? "—")@(_mjMonthlyLimit > 0 ? $" / {_mjMonthlyLimit:N0}" : "")
+                    </span>
+                </div>
+                @if (_mjMonthlyLimit > 0 && _usage.SentThisMonth is int sent)
+                {
+                    var pct = UsagePct(sent, _mjMonthlyLimit);
+                    <div class="progress" role="progressbar" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100" style="height: 1.2rem;">
+                        <div class="progress-bar @BarClass(pct)" style="width: @(pct)%;">@pct%</div>
+                    </div>
+                }
+            </div>
+
+            <div class="mb-1">
+                <div class="d-flex justify-content-between small">
+                    <span>Stored contacts</span>
+                    <span>
+                        @(_usage.ContactCount?.ToString("N0") ?? "—")@(_mjContactLimit > 0 ? $" / {_mjContactLimit:N0}" : "")
+                    </span>
+                </div>
+                @if (_mjContactLimit > 0 && _usage.ContactCount is int contacts)
+                {
+                    var pct = UsagePct(contacts, _mjContactLimit);
+                    <div class="progress" role="progressbar" aria-valuenow="@pct" aria-valuemin="0" aria-valuemax="100" style="height: 1.2rem;">
+                        <div class="progress-bar @BarClass(pct)" style="width: @(pct)%;">@pct%</div>
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(_usage.Error))
+            {
+                <div class="alert alert-warning py-2 mt-3 mb-0">@_usage.Error</div>
+            }
+        }
+    </div>
+</div>
+
+<div class="card mb-4 border-danger" style="max-width: 760px;">
+    <div class="card-body">
+        <h5 class="card-title text-danger">Purge contacts</h5>
+        <p class="text-muted">
+            Permanently delete <strong>every contact</strong> stored on this Mailjet API key. Mailjet
+            anonymizes each contact immediately and fully removes it after 30 days.
+            <strong>This cannot be undone</strong> and does not affect your Ztpr users — only Mailjet's
+            contact database (the recipients auto-collected from sent mail).
+        </p>
+
+        @if (!_purgeConfirm)
+        {
+            <button class="btn btn-outline-danger" @onclick="() => _purgeConfirm = true"
+                    disabled="@(_purgeBusy || (!_mjSecretConfigured && !EmailConfiguredSaved))">
+                Purge all contacts
+            </button>
+        }
+        else
+        {
+            <div class="alert alert-danger py-2">
+                Are you sure? This permanently deletes all Mailjet contacts.
+            </div>
+            <button class="btn btn-danger" @onclick="PurgeContactsAsync" disabled="@_purgeBusy">
+                @(_purgeBusy ? $"Purging… ({_purgeProgress:N0} deleted)" : "Yes, purge all contacts")
+            </button>
+            <button class="btn btn-outline-secondary ms-2" @onclick="() => _purgeConfirm = false" disabled="@_purgeBusy">
+                Cancel
+            </button>
+        }
+
+        @if (!string.IsNullOrEmpty(_purgeResult)) { <div class="alert alert-success py-2 mt-3 mb-0">@_purgeResult</div> }
+        @if (!string.IsNullOrEmpty(_purgeError)) { <div class="alert alert-danger py-2 mt-3 mb-0">@_purgeError</div> }
     </div>
 </div>
 }
@@ -245,7 +438,7 @@ else
         @foreach (var c in _current)
         {
             <li>
-                <code>@string.Join(", ", c.Names)</code> — expires <strong>@c.NotAfter.LocalDateTime.ToString("d")</strong>
+                <code>@string.Join(", ", c.Names)</code> — expires <strong><LocalTime Value="@c.NotAfter" Mode="date" /></strong>
                 (@DaysLeft(c.NotAfter) days left)
             </li>
         }
@@ -353,7 +546,7 @@ else if (_step == Step.Done)
 {
     <div class="alert alert-success">
         <strong>Certificate issued</strong> for <code>@string.Join(", ", _issuedDomains)</code>,
-        valid until <strong>@(_issuedExpiry?.LocalDateTime.ToString("f"))</strong>.
+        valid until <strong><LocalTime Value="@_issuedExpiry" /></strong>.
         @if (!_listenerOn)
         {
             <text> Enable <strong>HTTPS</strong> on the General tab and restart to serve it on 443.</text>
@@ -376,7 +569,7 @@ else if (_step == Step.Done)
 }
 
 @code {
-    private enum Tab { General, Limits, Dns, Certificate }
+    private enum Tab { General, Limits, Email, Dns, Certificate }
     private Tab _tab = Tab.General;
 
     private enum Step { Config, Dns, Done }
@@ -417,6 +610,36 @@ else if (_step == Step.Done)
     private bool _limitsBusy;
     private string? _limitsSaved;
 
+    // Email (Mailjet).
+    private bool _emailEnabled;
+    private string? _mjApiKey;
+    private string _mjSecretInput = "";
+    private bool _mjSecretConfigured;
+    private string? _fromEmail;
+    private string? _fromName;
+    private bool _requireEmailConfirmation;
+    private int _mjMonthlyLimit = 6000;
+    private int _mjContactLimit;
+    private bool _emailBusy;
+    private string? _emailSaved;
+    private string? _emailError;
+    private string _testTo = "";
+    private bool _testBusy;
+    private string? _testResult;
+    private string? _testError;
+
+    // Mailjet usage bars + contact purge.
+    private MailjetUsage? _usage;
+    private bool _usageBusy;
+    private bool _purgeConfirm;
+    private bool _purgeBusy;
+    private int _purgeProgress;
+    private string? _purgeResult;
+    private string? _purgeError;
+
+    /// <summary>True once email credentials have been persisted (so usage/purge can run).</summary>
+    private bool EmailConfiguredSaved => SettingsSvc.Current.HasEmail;
+
     // Route 53.
     private bool _r53Enabled;
     private string? _r53Zone;
@@ -448,6 +671,15 @@ else if (_step == Step.Done)
         _idleMinutes = cfg.IdleTimeoutMinutes;
         _maxPerKey = cfg.MaxTunnelsPerKey;
         _reaperSeconds = cfg.ReaperIntervalSeconds;
+
+        _emailEnabled = cfg.EmailEnabled;
+        _mjApiKey = cfg.MailjetApiKey;
+        _mjSecretConfigured = !string.IsNullOrEmpty(cfg.MailjetSecretKeyEnc);
+        _fromEmail = cfg.EmailFromAddress;
+        _fromName = cfg.EmailFromName;
+        _requireEmailConfirmation = cfg.RequireEmailConfirmation;
+        _mjMonthlyLimit = cfg.MailjetMonthlyEmailLimit;
+        _mjContactLimit = cfg.MailjetContactLimit;
 
         _r53Enabled = cfg.Route53Enabled;
         _r53Zone = cfg.Route53HostedZoneId;
@@ -516,6 +748,143 @@ else if (_step == Step.Done)
         }
         finally { _limitsBusy = false; }
     }
+
+    private async Task SaveEmailAsync()
+    {
+        _emailSaved = null;
+        _emailError = null;
+
+        var apiKey = _mjApiKey?.Trim();
+        var fromEmail = _fromEmail?.Trim();
+        var newSecret = _mjSecretInput;
+
+        if (_emailEnabled)
+        {
+            if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(fromEmail)
+                || (!_mjSecretConfigured && string.IsNullOrWhiteSpace(newSecret)))
+            {
+                _emailError = "Enter the Mailjet API key, secret key, and a from address to enable email.";
+                return;
+            }
+        }
+
+        _emailBusy = true;
+        try
+        {
+            await SettingsSvc.UpdateAsync(s =>
+            {
+                s.EmailEnabled = _emailEnabled;
+                s.MailjetApiKey = string.IsNullOrWhiteSpace(apiKey) ? null : apiKey;
+                s.EmailFromAddress = string.IsNullOrWhiteSpace(fromEmail) ? null : fromEmail;
+                s.EmailFromName = string.IsNullOrWhiteSpace(_fromName) ? null : _fromName!.Trim();
+                s.RequireEmailConfirmation = _requireEmailConfirmation;
+                s.MailjetMonthlyEmailLimit = Math.Max(0, _mjMonthlyLimit);
+                s.MailjetContactLimit = Math.Max(0, _mjContactLimit);
+                // Only replace the stored secret when a new value was entered.
+                if (!string.IsNullOrWhiteSpace(newSecret))
+                    s.MailjetSecretKeyEnc = Secrets.Protect(newSecret.Trim());
+            });
+
+            _mjSecretInput = "";
+            _mjSecretConfigured = !string.IsNullOrEmpty(SettingsSvc.Current.MailjetSecretKeyEnc);
+            _mjMonthlyLimit = SettingsSvc.Current.MailjetMonthlyEmailLimit;
+            _mjContactLimit = SettingsSvc.Current.MailjetContactLimit;
+            _emailSaved = "Saved.";
+        }
+        finally { _emailBusy = false; }
+    }
+
+    private async Task SendTestAsync()
+    {
+        _testResult = null;
+        _testError = null;
+
+        if (string.IsNullOrWhiteSpace(_testTo))
+        {
+            _testError = "Enter a recipient address.";
+            return;
+        }
+
+        // Use the values currently in the form so an admin can validate keys before saving.
+        // A blank secret field falls back to the saved (encrypted) secret, if any.
+        var apiKey = _mjApiKey?.Trim();
+        var secret = string.IsNullOrWhiteSpace(_mjSecretInput)
+            ? Secrets.Unprotect(SettingsSvc.Current.MailjetSecretKeyEnc)
+            : _mjSecretInput.Trim();
+        var fromEmail = _fromEmail?.Trim();
+
+        if (string.IsNullOrWhiteSpace(apiKey) || string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(fromEmail))
+        {
+            _testError = "Enter the API key, secret key, and from address first.";
+            return;
+        }
+
+        _testBusy = true;
+        try
+        {
+            var creds = new EmailCredentials(apiKey, secret, fromEmail, _fromName?.Trim());
+            var html = "<p>This is a test email from your Ztpr server. If you received it, Mailjet is configured correctly.</p>";
+            var result = await Email.SendAsync(_testTo.Trim(), "Ztpr test email", html, creds);
+            if (result.Succeeded)
+                _testResult = $"Test email sent to {_testTo.Trim()}. Check the inbox to confirm delivery.";
+            else
+                _testError = result.Error;
+        }
+        finally { _testBusy = false; }
+    }
+
+    private async Task RefreshUsageAsync()
+    {
+        if (!EmailConfiguredSaved)
+        {
+            _usage = new MailjetUsage(null, null, "Save your Mailjet credentials first.");
+            return;
+        }
+        _usageBusy = true;
+        try
+        {
+            _usage = await Email.GetUsageAsync();
+        }
+        finally { _usageBusy = false; }
+    }
+
+    private async Task PurgeContactsAsync()
+    {
+        _purgeResult = null;
+        _purgeError = null;
+        _purgeProgress = 0;
+        _purgeBusy = true;
+        try
+        {
+            var progress = new Progress<int>(n => InvokeAsync(() =>
+            {
+                _purgeProgress = n;
+                StateHasChanged();
+            }));
+            var result = await Email.PurgeContactsAsync(progress);
+            if (result.Succeeded)
+            {
+                _purgeResult = $"Purged {result.Deleted:N0} contact(s). Mailjet fully removes them within 30 days.";
+                // Reflect the change in the usage bars.
+                await RefreshUsageAsync();
+            }
+            else
+            {
+                _purgeError = $"{result.Error} ({result.Deleted:N0} deleted before stopping.)";
+            }
+        }
+        finally
+        {
+            _purgeBusy = false;
+            _purgeConfirm = false;
+        }
+    }
+
+    private static int UsagePct(int used, int limit) =>
+        limit <= 0 ? 0 : Math.Clamp((int)Math.Round(used * 100.0 / limit), 0, 100);
+
+    private static string BarClass(int pct) =>
+        pct >= 90 ? "bg-danger" : pct >= 75 ? "bg-warning" : "bg-success";
 
     private async Task SaveRoute53Async()
     {

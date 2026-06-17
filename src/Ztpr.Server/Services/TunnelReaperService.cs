@@ -11,8 +11,13 @@ namespace Ztpr.Server.Services;
 public sealed class TunnelReaperService(
     TunnelManager manager,
     SettingsService settings,
+    AuditLogService audit,
     ILogger<TunnelReaperService> logger) : BackgroundService
 {
+    // The audit-log size cap only needs checking occasionally, not every reaper pass.
+    private static readonly TimeSpan AuditCheckInterval = TimeSpan.FromMinutes(5);
+    private DateTimeOffset _nextAuditCheck = DateTimeOffset.MinValue;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         while (!stoppingToken.IsCancellationRequested)
@@ -28,6 +33,19 @@ public sealed class TunnelReaperService(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Reaper sweep failed");
+            }
+
+            if (DateTimeOffset.UtcNow >= _nextAuditCheck)
+            {
+                _nextAuditCheck = DateTimeOffset.UtcNow + AuditCheckInterval;
+                try
+                {
+                    await audit.EnforceSizeCapAsync(stoppingToken);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Audit log size-cap enforcement failed");
+                }
             }
         }
     }

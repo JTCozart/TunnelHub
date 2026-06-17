@@ -8,6 +8,17 @@
 <div class="auth-card">
     <h1>Create account</h1>
 
+    @if (!string.IsNullOrEmpty(Registered))
+    {
+        <div class="alert alert-success" role="alert">
+            <strong>Almost there!</strong> We've sent a confirmation link to <strong>@Registered</strong>.
+            Click it to activate your account, then sign in.
+        </div>
+        <p class="mt-3 text-center"><a href="/login">Go to sign in</a></p>
+    }
+    else
+    {
+
     @if (_isFirstUser)
     {
         <div class="alert alert-info">
@@ -44,10 +55,12 @@
     <p class="mt-3 text-center">
         Already have an account? <a href="/login">Sign in</a>
     </p>
+    }
 </div>
 
 @code {
     [SupplyParameterFromQuery] private string? Error { get; set; }
+    [SupplyParameterFromQuery] private string? Registered { get; set; }
     private bool _isFirstUser;
     private bool _requireInvite = true;
 

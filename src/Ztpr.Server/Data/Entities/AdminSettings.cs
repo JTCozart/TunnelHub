@@ -116,6 +116,55 @@ public class AdminSettings
     /// </summary>
     public string Route53Region { get; set; } = "us-east-1";
 
+    // --- Email (Mailjet, bring-your-own-key) ---
+
+    /// <summary>
+    /// Master switch — when off, no email is sent and the email-dependent features
+    /// (verification on registration, password reset) are unavailable.
+    /// </summary>
+    public bool EmailEnabled { get; set; }
+
+    /// <summary>The Mailjet API key (public part). Used as the Basic-auth username.</summary>
+    public string? MailjetApiKey { get; set; }
+
+    /// <summary>
+    /// The Mailjet secret key, <strong>encrypted at rest</strong> via ASP.NET Core Data
+    /// Protection (used as the Basic-auth password). Never store or surface the plaintext.
+    /// </summary>
+    public string? MailjetSecretKeyEnc { get; set; }
+
+    /// <summary>The verified sender address mail is sent from, e.g. <c>noreply@example.com</c>.</summary>
+    public string? EmailFromAddress { get; set; }
+
+    /// <summary>Friendly sender name shown in recipients' inboxes, e.g. <c>Ztpr</c>.</summary>
+    public string? EmailFromName { get; set; }
+
+    /// <summary>
+    /// When on (and email is configured), new self-registered users must confirm their
+    /// email address before they can sign in. The first user (admin) is exempt.
+    /// </summary>
+    public bool RequireEmailConfirmation { get; set; }
+
+    /// <summary>
+    /// The monthly email-send allowance of the connected Mailjet plan, used purely to
+    /// render a usage progress bar (Mailjet's free tier is 6,000/month). <c>0</c> hides
+    /// the bar. The API does not expose the plan quota, so the admin sets it here.
+    /// </summary>
+    public int MailjetMonthlyEmailLimit { get; set; } = 6000;
+
+    /// <summary>
+    /// The contact-storage allowance of the connected Mailjet plan, used to render a
+    /// usage progress bar. <c>0</c> means "no cap set" — the count is shown without a bar.
+    /// </summary>
+    public int MailjetContactLimit { get; set; }
+
+    /// <summary>Whether email sending is configured and enabled.</summary>
+    public bool HasEmail =>
+        EmailEnabled
+        && !string.IsNullOrWhiteSpace(MailjetApiKey)
+        && !string.IsNullOrWhiteSpace(MailjetSecretKeyEnc)
+        && !string.IsNullOrWhiteSpace(EmailFromAddress);
+
     public DateTimeOffset UpdatedAt { get; set; } = DateTimeOffset.UtcNow;
 
     /// <summary>Parsed, trimmed, de-duplicated managed hostnames (excludes blanks).</summary>

@@ -28,7 +28,7 @@ else
                     <td><code>@t.Subdomain.@Base</code></td>
                     <td>@OwnerName(t.OwnerId)</td>
                     <td>@(t.ClientIp ?? "—")</td>
-                    <td>@t.StartedAt.LocalDateTime.ToString("T")</td>
+                    <td><LocalTime Value="@t.StartedAt" Mode="time" /></td>
                     <td><span class="badge text-bg-light border">@Ago(t.LastSeen)</span></td>
                     <td><span class="badge text-bg-secondary">@Remaining(t.ExpiresAt)</span></td>
                     <td>

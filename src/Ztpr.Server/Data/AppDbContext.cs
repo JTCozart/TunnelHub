@@ -12,6 +12,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<Tunnel> Tunnels => Set<Tunnel>();
     public DbSet<AdminSettings> AdminSettings => Set<AdminSettings>();
     public DbSet<IssuedCertificate> IssuedCertificates => Set<IssuedCertificate>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -34,6 +35,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options)
         b.Entity<IssuedCertificate>(e =>
         {
             e.HasIndex(x => x.Host).IsUnique();
+        });
+
+        b.Entity<AuditEvent>(e =>
+        {
+            // The viewer orders/filters by time and type; index both.
+            e.HasIndex(x => x.CreatedAtUnixMs);
+            e.HasIndex(x => x.EventType);
         });
 
         b.Entity<Tunnel>(e =>

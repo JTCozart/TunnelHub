@@ -1,0 +1,272 @@
+@page "/account/security"
+@rendermode InteractiveServer
+@attribute [Authorize]
+@inject IServiceScopeFactory ScopeFactory
+
+<PageTitle>Security · Ztpr</PageTitle>
+
+<h1>Security</h1>
+<p>Protect your account with two-factor authentication (2FA) using an authenticator app.</p>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger">@_error</div>
+}
+
+@if (_stage == Stage.Loading)
+{
+    <p class="text-muted">Loading…</p>
+}
+else if (_stage == Stage.ShowCodes)
+{
+    <div class="card" style="max-width: 560px;">
+        <div class="card-body">
+            <h5 class="card-title">Save your backup codes</h5>
+            <p>
+                Store these somewhere safe. If you lose access to your authenticator app you can
+                use one of these codes to sign in. <strong>Each code works only once</strong>, and
+                they are shown only now.
+            </p>
+            <pre class="bg-light border rounded p-3 mb-3">@string.Join("\n", _backupCodes)</pre>
+            <div class="form-check mb-3">
+                <input class="form-check-input" type="checkbox" id="savedAck" @bind="_savedAck" />
+                <label class="form-check-label" for="savedAck">I have saved these backup codes.</label>
+            </div>
+            <button class="btn btn-primary" disabled="@(!_savedAck || _busy)" @onclick="FinishAsync">Finish</button>
+        </div>
+    </div>
+}
+else if (_stage == Stage.Enroll)
+{
+    <div class="card" style="max-width: 560px;">
+        <div class="card-body">
+            <h5 class="card-title">Set up your authenticator</h5>
+            <ol>
+                <li>Open your authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…).</li>
+                <li>Scan this QR code, or enter the key manually.</li>
+                <li>Enter the 6-digit code the app shows to confirm.</li>
+            </ol>
+            <div class="mb-3" style="max-width: 220px;">@((MarkupString)_qrSvg)</div>
+            <p class="mb-3">Manual key: <kbd>@_formattedKey</kbd></p>
+            <div class="input-group mb-2" style="max-width: 320px;">
+                <input class="form-control" placeholder="123456" inputmode="numeric" @bind="_verifyCode" />
+                <button class="btn btn-primary" disabled="@_busy" @onclick="ConfirmEnrollAsync">Confirm</button>
+            </div>
+            <button class="btn btn-link p-0" disabled="@_busy" @onclick="CancelEnrollAsync">Cancel</button>
+        </div>
+    </div>
+}
+else if (_stage == Stage.Enabled)
+{
+    <div class="alert alert-success">
+        <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+        Two-factor authentication is <strong>enabled</strong> on your account.
+    </div>
+
+    <div class="card mb-3" style="max-width: 560px;">
+        <div class="card-body">
+            <h5 class="card-title">Backup codes</h5>
+            <p>Regenerate a fresh set of one-time backup codes. This invalidates any previous codes.</p>
+            <button class="btn btn-outline-secondary" disabled="@_busy" @onclick="RegenerateCodesAsync">
+                Regenerate backup codes
+            </button>
+        </div>
+    </div>
+
+    <div class="card border-danger" style="max-width: 560px;">
+        <div class="card-body">
+            <h5 class="card-title text-danger">Disable two-factor authentication</h5>
+            <p>Enter a current authenticator code to turn off 2FA.</p>
+            <div class="input-group" style="max-width: 320px;">
+                <input class="form-control" placeholder="123456" inputmode="numeric" @bind="_disableCode" />
+                <button class="btn btn-outline-danger" disabled="@_busy" @onclick="DisableAsync">Disable</button>
+            </div>
+        </div>
+    </div>
+}
+else // Stage.Disabled
+{
+    <div class="alert alert-warning">
+        <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+        Two-factor authentication is <strong>not enabled</strong>.
+    </div>
+    <button class="btn btn-primary" disabled="@_busy" @onclick="BeginEnrollAsync">Enable 2FA</button>
+}
+
+@if (_stage != Stage.Loading)
+{
+    <hr class="my-4" />
+    <h2 class="h4">Password</h2>
+    <div class="card" style="max-width: 560px;">
+        <div class="card-body">
+            <h5 class="card-title">Change password</h5>
+
+            @if (PwChanged)
+            {
+                <div class="alert alert-success">Your password has been changed.</div>
+            }
+            @if (!string.IsNullOrEmpty(PwError))
+            {
+                <div class="alert alert-danger">@PwError</div>
+            }
+
+            <form method="post" action="/account/change-password">
+                <AntiforgeryToken />
+                <div class="mb-3">
+                    <label class="form-label" for="currentPassword">Current password</label>
+                    <input class="form-control" id="currentPassword" name="currentPassword" type="password"
+                           autocomplete="current-password" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="newPassword">New password</label>
+                    <input class="form-control" id="newPassword" name="newPassword" type="password"
+                           autocomplete="new-password" minlength="8" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label" for="confirmPassword">Confirm new password</label>
+                    <input class="form-control" id="confirmPassword" name="confirmPassword" type="password"
+                           autocomplete="new-password" minlength="8" required />
+                </div>
+                <button class="btn btn-primary" type="submit">Change password</button>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "pwChanged")] private bool PwChanged { get; set; }
+    [SupplyParameterFromQuery(Name = "pwError")] private string? PwError { get; set; }
+
+    [CascadingParameter] private Task<AuthenticationState> AuthState { get; set; } = default!;
+
+    private enum Stage { Loading, Disabled, Enroll, ShowCodes, Enabled }
+
+    private Stage _stage = Stage.Loading;
+    private string _userId = "";
+    private string? _error;
+    private bool _busy;
+
+    // Enrollment state.
+    private string _qrSvg = "";
+    private string _formattedKey = "";
+    private string _verifyCode = "";
+
+    // Backup-code display + acknowledgement.
+    private string[] _backupCodes = [];
+    private bool _savedAck;
+
+    // Enabled-state inputs.
+    private string _disableCode = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState;
+        _userId = state.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+        await RefreshStageAsync();
+    }
+
+    private async Task RefreshStageAsync()
+    {
+        await Run(async (um, user) =>
+        {
+            _stage = await um.GetTwoFactorEnabledAsync(user) ? Stage.Enabled : Stage.Disabled;
+        });
+    }
+
+    private async Task BeginEnrollAsync()
+    {
+        await Run(async (um, user) =>
+        {
+            // A fresh key each time enrollment starts, so a half-finished attempt can't be reused.
+            await um.ResetAuthenticatorKeyAsync(user);
+            var key = await um.GetAuthenticatorKeyAsync(user) ?? "";
+            var uri = Mfa.BuildUri(user.Email ?? user.UserName ?? "user", key);
+            _qrSvg = Mfa.QrSvg(uri);
+            _formattedKey = Mfa.FormatKey(key);
+            _verifyCode = "";
+            _stage = Stage.Enroll;
+        });
+    }
+
+    private async Task ConfirmEnrollAsync()
+    {
+        await Run(async (um, user) =>
+        {
+            var code = (_verifyCode ?? "").Replace(" ", "").Replace("-", "");
+            var ok = await um.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, code);
+            if (!ok)
+            {
+                _error = "That code didn't match. Make sure your device clock is correct and try again.";
+                return;
+            }
+            await um.SetTwoFactorEnabledAsync(user, true);
+            await ShowFreshCodes(um, user);
+        });
+    }
+
+    private async Task CancelEnrollAsync()
+    {
+        await Run(async (um, user) =>
+        {
+            await um.ResetAuthenticatorKeyAsync(user);
+            _stage = await um.GetTwoFactorEnabledAsync(user) ? Stage.Enabled : Stage.Disabled;
+        });
+    }
+
+    private async Task RegenerateCodesAsync()
+    {
+        await Run(ShowFreshCodes);
+    }
+
+    private async Task ShowFreshCodes(UserManager<ApplicationUser> um, ApplicationUser user)
+    {
+        var codes = await um.GenerateNewTwoFactorRecoveryCodesAsync(user, 10);
+        _backupCodes = codes?.ToArray() ?? [];
+        _savedAck = false;
+        _stage = Stage.ShowCodes;
+    }
+
+    private async Task FinishAsync()
+    {
+        _backupCodes = [];
+        await RefreshStageAsync();
+    }
+
+    private async Task DisableAsync()
+    {
+        await Run(async (um, user) =>
+        {
+            var code = (_disableCode ?? "").Replace(" ", "").Replace("-", "");
+            var ok = await um.VerifyTwoFactorTokenAsync(user, TokenOptions.DefaultAuthenticatorProvider, code);
+            if (!ok)
+            {
+                _error = "That code didn't match — 2FA was not disabled.";
+                return;
+            }
+            await um.SetTwoFactorEnabledAsync(user, false);
+            await um.ResetAuthenticatorKeyAsync(user);
+            user.BackupCodeFailedCount = 0;
+            await um.UpdateAsync(user);
+            _disableCode = "";
+            _stage = Stage.Disabled;
+        });
+    }
+
+    // Runs an action with a scoped UserManager and the freshly-loaded user, resetting any
+    // prior error and guarding against re-entrancy.
+    private async Task Run(Func<UserManager<ApplicationUser>, ApplicationUser, Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var um = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await um.FindByIdAsync(_userId);
+            if (user is null) { _error = "Account not found."; return; }
+            await action(um, user);
+        }
+        finally { _busy = false; }
+    }
+}

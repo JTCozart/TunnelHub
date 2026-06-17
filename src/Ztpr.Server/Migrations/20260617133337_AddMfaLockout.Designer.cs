@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Ztpr.Server.Data;
 
@@ -10,9 +11,11 @@ using Ztpr.Server.Data;
 namespace Ztpr.Server.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260617133337_AddMfaLockout")]
+    partial class AddMfaLockout
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "9.0.17");
@@ -171,32 +174,11 @@ namespace Ztpr.Server.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.Property<bool>("EmailEnabled")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("EmailFromAddress")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("EmailFromName")
-                        .HasColumnType("TEXT");
-
                     b.Property<bool>("HttpsEnabled")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("IdleTimeoutMinutes")
                         .HasColumnType("INTEGER");
-
-                    b.Property<string>("MailjetApiKey")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("MailjetContactLimit")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("MailjetMonthlyEmailLimit")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("MailjetSecretKeyEnc")
-                        .HasColumnType("TEXT");
 
                     b.Property<string>("ManagedHostnames")
                         .HasColumnType("TEXT");
@@ -211,9 +193,6 @@ namespace Ztpr.Server.Migrations
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("RenewWithinDays")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("RequireEmailConfirmation")
                         .HasColumnType("INTEGER");
 
                     b.Property<bool>("RequireInviteCode")
@@ -367,39 +346,6 @@ namespace Ztpr.Server.Migrations
                         .HasDatabaseName("UserNameIndex");
 
                     b.ToTable("AspNetUsers", (string)null);
-                });
-
-            modelBuilder.Entity("Ztpr.Server.Data.Entities.AuditEvent", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("TEXT");
-
-                    b.Property<long>("CreatedAtUnixMs")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Detail")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("EventType")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("IpAddress")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UserEmail")
-                        .HasColumnType("TEXT");
-
-                    b.Property<string>("UserId")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAtUnixMs");
-
-                    b.HasIndex("EventType");
-
-                    b.ToTable("AuditEvents");
                 });
 
             modelBuilder.Entity("Ztpr.Server.Data.Entities.InviteCode", b =>

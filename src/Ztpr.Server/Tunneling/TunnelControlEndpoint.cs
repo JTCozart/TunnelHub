@@ -1,3 +1,4 @@
+using Ztpr.Server.Data.Entities;
 using Ztpr.Server.Services;
 using Ztpr.Shared.Protocol;
 
@@ -11,6 +12,7 @@ public sealed class TunnelControlEndpoint(
     TunnelManager manager,
     SubdomainAllocator allocator,
     SettingsService settings,
+    AuditLogService audit,
     ILogger<TunnelControlEndpoint> logger)
 {
     public async Task HandleAsync(HttpContext context)
@@ -93,6 +95,8 @@ public sealed class TunnelControlEndpoint(
             ExpiresAtUnix = expiresAt.ToUnixTimeSeconds(),
         }, ct);
         logger.LogInformation("Client {Ip} authenticated -> {Host}", session.ClientIp, fullHost);
+        await audit.LogAsync(AuditEventType.TunnelStarted, key.OwnerId, key.Owner?.Email, session.ClientIp,
+            detail: $"{fullHost} (key: {key.Label})", ct: ct);
 
         // 6. Pump until the socket closes or the tunnel is killed.
         try

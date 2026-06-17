@@ -4,12 +4,15 @@
 @inject IDbContextFactory<AppDbContext> DbFactory
 @inject IServiceScopeFactory ScopeFactory
 @inject TunnelManager Manager
+@inject AuditLogService Audit
+@inject IJSRuntime JS
 
 <PageTitle>Users · Admin</PageTitle>
 
 <h1>Users</h1>
 <p>All accounts, their active tunnels, and block controls.</p>
 
+<div class="table-responsive">
 <table class="table">
     <thead>
         <tr><th>Email</th><th>Role</th><th>Registered</th><th>Active tunnels</th><th>Status</th><th></th></tr>
@@ -20,7 +23,7 @@
             <tr class="@(row.User.IsBlocked ? "table-warning" : null)">
                 <td>@row.User.Email</td>
                 <td>@(row.IsAdmin ? "Admin" : "User")</td>
-                <td>@row.User.CreatedAt.LocalDateTime.ToString("d")</td>
+                <td><LocalTime Value="@row.User.CreatedAt" Mode="date" /></td>
                 <td>
                     @if (row.ActiveSubdomains.Count == 0)
                     {
@@ -36,29 +39,45 @@
                     {
                         <span class="badge bg-danger">blocked</span>
                     }
+                    else if (row.User.IsLocked)
+                    {
+                        <span class="badge bg-warning text-dark">locked</span>
+                    }
                     else
                     {
                         <span class="badge bg-success">active</span>
                     }
                 </td>
-                <td>
+                <td class="text-nowrap">
+                    @if (row.User.IsLocked)
+                    {
+                        <button class="btn btn-sm btn-outline-warning" @onclick="() => UnlockAsync(row.User.Id)" disabled="@_busy">Unlock</button>
+                    }
                     @if (row.IsAdmin)
                     {
-                        <span class="text-muted small">protected</span>
-                    }
-                    else if (row.User.IsBlocked)
-                    {
-                        <button class="btn btn-sm btn-outline-success" @onclick="() => SetBlockedAsync(row.User.Id, false)">Unblock</button>
+                        @if (!row.User.IsLocked)
+                        {
+                            <span class="text-muted small">protected</span>
+                        }
                     }
                     else
                     {
-                        <button class="btn btn-sm btn-outline-danger" @onclick="() => SetBlockedAsync(row.User.Id, true)">Block</button>
+                        @if (row.User.IsBlocked)
+                        {
+                            <button class="btn btn-sm btn-outline-success" @onclick="() => SetBlockedAsync(row.User.Id, false)" disabled="@_busy">Unblock</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-sm btn-outline-danger" @onclick="() => SetBlockedAsync(row.User.Id, true)" disabled="@_busy">Block</button>
+                        }
+                        <button class="btn btn-sm btn-outline-secondary" @onclick="() => DeleteAsync(row.User.Id, row.User.Email)" disabled="@_busy">Delete</button>
                     }
                 </td>
             </tr>
         }
     </tbody>
 </table>
+</div>
 
 @code {
     private sealed class Row
@@ -68,9 +87,18 @@
         public List<string> ActiveSubdomains { get; init; } = [];
     }
 
-    private List<Row> _rows = [];
+    [CascadingParameter] private Task<AuthenticationState> AuthState { get; set; } = default!;
 
-    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private List<Row> _rows = [];
+    private string? _adminEmail;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var state = await AuthState;
+        _adminEmail = state.User.FindFirstValue(ClaimTypes.Name);
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
@@ -110,6 +138,57 @@
 
         if (blocked)
             await Manager.CloseForOwnerAsync(userId, "User blocked by administrator.");
+
+        await Audit.LogAsync(blocked ? AuditEventType.UserBlocked : AuditEventType.UserUnblocked,
+            user.Id, user.Email, detail: $"by {_adminEmail ?? "admin"}");
+
+        await LoadAsync();
+    }
+
+    // Permanently delete a (non-admin) user. Cascade removes their API keys and tunnel
+    // history; live tunnels are closed first. Admins are never offered the button.
+    private async Task DeleteAsync(string userId, string? email)
+    {
+        if (_busy) return;
+        if (!await JS.InvokeAsync<bool>("confirm",
+                $"Permanently delete {email}? Their API keys and tunnel history will be removed and any live tunnels disconnected. This cannot be undone."))
+            return;
+
+        _busy = true;
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+            var user = await userManager.FindByIdAsync(userId);
+            if (user is null) return;
+
+            // Guard: never delete an administrator through this UI (mirrors block).
+            if (await userManager.IsInRoleAsync(user, Roles.Admin))
+                return;
+
+            await Manager.CloseForOwnerAsync(userId, "Account deleted by administrator.");
+            var result = await userManager.DeleteAsync(user);
+            if (result.Succeeded)
+                await Audit.LogAsync(AuditEventType.UserDeleted, user.Id, user.Email, detail: $"by {_adminEmail ?? "admin"}");
+
+            await LoadAsync();
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task UnlockAsync(string userId)
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByIdAsync(userId);
+        if (user is null) return;
+
+        user.IsLocked = false;
+        user.LockedAt = null;
+        user.BackupCodeFailedCount = 0;
+        await userManager.UpdateAsync(user);
+        // Rotate the security stamp so the locked-out half-authenticated session is invalidated.
+        await userManager.UpdateSecurityStampAsync(user);
 
         await LoadAsync();
     }

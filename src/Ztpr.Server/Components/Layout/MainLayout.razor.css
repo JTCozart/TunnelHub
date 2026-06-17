@@ -6,6 +6,9 @@
 
 main {
     flex: 1;
+    /* Allow the content column to shrink below its intrinsic width so a wide child
+       (e.g. the audit table) scrolls within it instead of squeezing the sidebar. */
+    min-width: 0;
 }
 
 .sidebar {
@@ -62,6 +65,8 @@ main {
         height: 100vh;
         position: sticky;
         top: 0;
+        /* Hold the menu at a fixed width; never let wide content shrink it. */
+        flex-shrink: 0;
     }
 
     .top-row {
