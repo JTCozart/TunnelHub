@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>User Guide | Ztpr</title>
-  <meta name="description" content="Ztpr user guide: self-hosting on Linux, automatic wildcard HTTPS via Let's Encrypt, runtime settings, and the client CLI reference." />
+  <meta name="description" content="Ztpr user guide: self-hosting on Linux, automatic wildcard HTTPS via Let's Encrypt, email, two-factor auth, the audit log, runtime settings, and the client CLI reference." />
   <meta name="theme-color" content="#4f46e5" />
   <link rel="canonical" href="https://ztpr.app/user-guide.html" />
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -103,6 +103,9 @@
     <a href="#self-hosting">Self-hosting</a>
     <a href="#https-tls">HTTPS &amp; TLS</a>
     <a href="#settings">Admin settings</a>
+    <a href="#email">Email (Mailjet)</a>
+    <a href="#accounts">Accounts &amp; 2FA</a>
+    <a href="#audit">Audit log</a>
     <a href="#configuration">appsettings reference</a>
     <a href="#cli">Client CLI</a>
     <a href="#security">Security notes</a>
@@ -173,12 +176,40 @@ sudo systemctl enable --now ztpr</code></pre>
       <tr><td>HTTPS enabled</td><td>Turns on TLS termination (ports 443/80) and the certificate wizard.</td></tr>
       <tr><td>Require invite code</td><td>On by default. When off, anyone can self-register; when on, new users need a single-use invite.</td></tr>
       <tr><td>Route 53 (DNS &amp; Route 53 tab)</td><td>Optional AWS access key, secret (stored encrypted), hosted zone ID, and region. When set, DNS-01 TXT records are created and verified automatically during certificate issuance/renewal.</td></tr>
+      <tr><td>Email (Email tab)</td><td>Optional Mailjet API key, secret (stored encrypted), and verified <em>from</em> address/name. Enables email verification and password reset. See <a href="#email">Email</a>.</td></tr>
+      <tr><td>Require email confirmation</td><td>When on (and email is configured), self-registered users must confirm their address before signing in. The first admin is exempt.</td></tr>
       <tr><td>Max session duration (hours)</td><td>Hard cap on a tunnel's lifetime. <code>0</code> = no lifetime cap.</td></tr>
       <tr><td>Idle timeout (min)</td><td>Release a tunnel after this long without traffic. <code>0</code> = never release on idle.</td></tr>
       <tr><td>Max tunnels per key</td><td>Max concurrent live tunnels per API key. <code>0</code> = unlimited.</td></tr>
       <tr><td>Reaper interval (sec)</td><td>How often expired/idle tunnels are swept (minimum 5).</td></tr>
     </table>
     <div class="callout"><i class="fa-solid fa-circle-info"></i> First boot uses safe defaults (<code>BaseDomain=lvh.me</code>, HTTPS off, invites required). Set your real domain and enable HTTPS from the UI after the first admin signs in.</div>
+
+    <h2 id="email">Email (Mailjet)</h2>
+    <p>Email is <strong>optional and bring-your-own-key</strong>. When configured, Ztpr can confirm new users' addresses and send password-reset links; with email off, those features are simply unavailable and users sign in without confirmation. Ztpr sends through <strong>Mailjet</strong> (the free tier allows 6,000 emails/month).</p>
+    <ol>
+      <li>Create a Mailjet account and verify a sender address (or domain) you control.</li>
+      <li>In <strong>Admin &rarr; Settings &rarr; Email</strong>, turn <strong>Email</strong> on and enter your Mailjet <strong>API key</strong> and <strong>secret key</strong>, plus the <em>from</em> address and friendly <em>from</em> name. The secret is stored <strong>encrypted at rest</strong>.</li>
+      <li><em>(Optional)</em> Turn on <strong>Require email confirmation</strong> so self-registered users must verify their address before their first sign-in. The first admin is always exempt.</li>
+    </ol>
+    <p>The Email tab also shows your current Mailjet usage. Because the API doesn't expose your plan's quota, you set the <strong>monthly send limit</strong> (default 6,000) and optional <strong>contact limit</strong> yourself; these only drive the usage progress bars.</p>
+    <div class="callout tip"><i class="fa-solid fa-lightbulb"></i> Use a dedicated sender like <code>noreply@example.com</code>. The address must be verified in Mailjet or messages will bounce.</div>
+
+    <h2 id="accounts">Accounts: 2FA, passwords &amp; recovery</h2>
+
+    <h3>Two-factor authentication (2FA)</h3>
+    <p>Any signed-in user can enable TOTP-based 2FA from <strong>Security</strong> (in the sidebar). Scan the QR code with an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, …) or enter the key by hand, then confirm with a 6-digit code. On enabling, you're shown <strong>one-time backup codes</strong> — save them; they're the only way in if you lose your authenticator. From the same page you can regenerate backup codes or disable 2FA (a current code is required to disable).</p>
+    <div class="callout warn"><i class="fa-solid fa-triangle-exclamation"></i> After <strong>5 failed backup-code attempts</strong> the account is <strong>locked</strong> and can only be unlocked by an admin (Admin &rarr; Users). This is distinct from an admin <em>block</em>.</div>
+
+    <h3>Change password</h3>
+    <p>Signed-in users change their password from the <strong>Security</strong> page (current password required).</p>
+
+    <h3>Forgot password</h3>
+    <p>If <a href="#email">email</a> is configured, the login page offers <strong>Forgot password?</strong>. Entering an account email sends a time-limited reset link. <strong>Without email configured, self-service reset is unavailable</strong> — an admin must assist.</p>
+
+    <h2 id="audit">Audit log</h2>
+    <p>Admins get a searchable security <strong>audit log</strong> at <strong>Admin &rarr; Audit log</strong>. It records sign-ins (success and failure), tunnel starts, API-key / user / invite creation and deletion, blocks/unblocks, and email-confirmation and password-reset events — each with the associated user and IP where known. Filter by event type and date range.</p>
+    <p>Every event is also mirrored to the host journal (<code>journalctl -u ztpr</code>). To stay within the server's limited storage the database log is capped (≈1&nbsp;GiB); once full, the oldest entries are purged automatically, so export anything you need to retain long-term.</p>
 
     <h2 id="configuration">appsettings reference</h2>
     <p>You rarely need to edit this — domains, TLS, and limits are managed at runtime (above). The file mainly holds the database location and optional bootstrap defaults:</p>
@@ -204,6 +235,9 @@ sudo systemctl enable --now ztpr</code></pre>
       <li>API keys are stored as SHA-256 hashes (256 bits of entropy) and shown only once at creation.</li>
       <li>Invite codes are single-use with optional expiry; the first user becomes admin. The invite requirement can be toggled by an admin but is on by default.</li>
       <li>Blocking a user invalidates their sessions (security-stamp bump), rejects their API keys, and immediately reaps their active tunnels.</li>
+      <li>Optional TOTP two-factor authentication with one-time backup codes; 5 failed backup-code attempts lock the account until an admin unlocks it.</li>
+      <li>The Mailjet secret key is stored <strong>encrypted at rest</strong> (ASP.NET Core Data Protection), like the Route 53 secret. Password-reset and email-confirmation links are time-limited.</li>
+      <li>Security-relevant actions are recorded to an <a href="#audit">audit log</a> (and the host journal) with user and IP.</li>
       <li>A configurable per-key concurrent-tunnel limit guards against exhaustion.</li>
       <li>AWS Route 53 credentials are stored <strong>encrypted at rest</strong> (ASP.NET Core Data Protection); the keyring lives in <code>/opt/ztpr/keys/</code> and is preserved across upgrades. Use a least-privilege IAM key scoped to the single hosted zone (the Settings tab provides the policy).</li>
       <li>The relay proxies tunnel traffic but never executes it.</li>
